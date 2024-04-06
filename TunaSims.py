@@ -19,9 +19,6 @@ def middle(element,lower,upper):
             return upper
     else:
         return lower
-    
-def sigmoid(z):
-    return 1/(1 + np.exp(-z))
 
 def tuna_dif_distance(query,
                     target,
@@ -114,10 +111,3 @@ def tuna_plus_distance(query,
     interactions = y*merged_ent*norm_ent + z*merged_ent*len_merged 
 
     return ind_terms + interactions
-
-
-def objective(x, args, loss_func, reg_func, distance_func):
-
-    kwargs = {k:v for k,v in zip(args[0],x)}
-    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - sigmoid(distance_func(i['dif'],**kwargs))),axis=1) + reg_func(x))
-
