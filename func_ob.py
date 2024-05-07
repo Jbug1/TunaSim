@@ -25,12 +25,10 @@ class func_ob:
             bounds = None,
             lambdas = 1,
             max_iter = 1e5,
-            early_stop_thresh = 1e-10,
+            tol = 1e-10,
             momentum_weights = [0.8,0.2],
             epsilon = 1.4901161193847656e-08,
             momentum_type = None,
-            scipy_method = 'L-BFGS-B',
-            scipy_tol=1e-20
     ):
         self.name = name
         self.distance_func = distance_func
@@ -42,19 +40,16 @@ class func_ob:
         self.bounds = bounds
         self.lambdas = lambdas
         self.max_iter = max_iter
-        self.early_stop_thresh = early_stop_thresh
         self.momentum_weights = momentum_weights
         self.epsilon = epsilon
         self.momentum_type = momentum_type
-        self.scipy_method = scipy_method
-        self.scipy_tol = scipy_tol
         self.n_iter = 0
         self.converged = None
         self.trained_vals = None
         self.running_grad = None
         self.converged = None
         self.trained_vals = None
-
+        self.objective_value = None
 
         @property
         def objective_func(self):
@@ -68,7 +63,7 @@ class func_ob:
 
             if self.solver == 'stoch':
 
-                self.scipy_solver_estimate(train_data, warm_start, verbose)
+                self.stoch_descent(train_data, warm_start, verbose)
 
             else:
                 self.scipy_solver_estimate(train_data, warm_start)
@@ -80,12 +75,13 @@ class func_ob:
             else:
                 init_vals=self.init_vals
 
-            scipy_res = mini(fun=self.objective_func, x0=init_vals, args=[self.var_names, train_data], tol=self.scipy_tol, bounds = self.bounds, method = self.scipy_method)
+            scipy_res = mini(fun=self.objective_func, x0=init_vals, args=[self.var_names, train_data], tol=self.tol, bounds = self.bounds, method = self.solver)
 
             #update values based on results
             self.converged = scipy_res.success
             self.trained_vals = scipy_res.x
             self.n_iter += scipy_res.nfev
+            self.objective_value = scipy_res.fun
 
 
         def stoch_descent(self, train_data, warm_start=False, verbose=None):
@@ -101,7 +97,7 @@ class func_ob:
             if sum(self.momentum_weights)!=1:
                 raise ValueError('sum of stop props must equal 1')
             
-            if self.early_stop<0:
+            if self.tol<0:
                 raise ValueError('early stop must be geq 0')
 
             if type(self.lambdas)==float or type(self.lambdas) == int:
@@ -119,9 +115,9 @@ class func_ob:
 
             #set index at 0 and initial running grad so that we don't trigger early stop
             i=0
-            running_grad = np.zeros(len(self.params))+10*(self.early_stop_thresh+1e-10)
+            running_grad = np.zeros(len(self.params))+10*(self.tol+1e-10)
 
-            while i<self.max_iter and sum(np.abs(running_grad))>self.early_stop_thresh:
+            while i<self.max_iter and sum(np.abs(running_grad))>self.tol:
 
                 #grab individual row
                 index = np.random.randint(len(train_data), size=1)
@@ -157,7 +153,7 @@ class func_ob:
 
             #update object based on results
             self.n_iter += i
-            self.converged = sum(running_grad)>self.early_stop 
+            self.converged = sum(running_grad)>self.tol
             self.running_grad = running_grad 
             self.trained_vals = init_vals
             
