@@ -4,13 +4,10 @@ from functools import partial
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
 
-def sigmoid(z):
-    return 1/(1 + np.exp(-z))
-
 def objective(x, args, loss_func, reg_func, distance_func):
 
     kwargs = {k:v for k,v in zip(args[0],x)}
-    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - sigmoid(distance_func(i['query'], i['target'],**kwargs))),axis=1) + reg_func(x))
+    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - distance_func(i['query'], i['target'],**kwargs)),axis=1) + reg_func(x))
 
 class func_ob:
     def __init__(
@@ -20,8 +17,8 @@ class func_ob:
             regularization_func,
             loss_func,
             init_vals,
-            constraints,
             params,
+            constraints = None,
             solver = 'stoch',
             bounds = None,
             lambdas = 1,
@@ -30,6 +27,7 @@ class func_ob:
             momentum_weights = [0.8,0.2],
             epsilon = 1.4901161193847656e-08,
             momentum_type = None,
+            rand = False
     ):
         self.name = name
         self.distance_func = distance_func
@@ -45,6 +43,7 @@ class func_ob:
         self.momentum_weights = momentum_weights
         self.epsilon = epsilon
         self.momentum_type = momentum_type
+        self.rand=rand
         self.n_iter = 0
         self.tol=tol
         self.converged = None
@@ -53,6 +52,7 @@ class func_ob:
         self.converged = None
         self.trained_vals = None
         self.objective_value = None
+        
 
     @property
     def objective_func(self):
@@ -78,7 +78,7 @@ class func_ob:
         else:
             init_vals=self.init_vals
 
-        scipy_res = mini(fun=self.objective_func, x0=init_vals, args=[self.var_names, train_data], tol=self.tol, bounds = self.bounds, method = self.solver)
+        scipy_res = mini(fun=self.objective_func, x0=init_vals, args=[self.params, train_data], tol=self.tol, bounds = self.bounds, method = self.solver)
 
         #update values based on results
         self.converged = scipy_res.success
@@ -123,7 +123,10 @@ class func_ob:
         while i<self.max_iter and sum(np.abs(running_grad))>self.tol:
 
             #grab individual row
-            index = np.random.randint(len(train_data))
+            if self.rand:
+                index = np.random.randint(len(train_data))
+            else:
+                index=i
             
             #estimate gradient and update values
             if self.momentum_type is None:
@@ -134,14 +137,14 @@ class func_ob:
 
             elif self.momentum_type == 'simple':
 
-                grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, data.iloc[index:index+1]])
+                grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
                 init_vals -= self.lambdas * running_grad
 
             elif self.momentum_type == 'jonie':
 
                 init_vals -= self.lambdas * self.momentum_weights[0] * running_grad
-                grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, data.iloc[index:index+1]])
+                grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 init_vals -= self.lambdas * self.momentum_weights[1] * grad
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad
 

@@ -6,6 +6,8 @@ from scipy import stats
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
 
+def sigmoid(z):
+    return 1/(1 + np.exp(-z))
 
 def middle(element,lower,upper):
     """ 
@@ -23,15 +25,15 @@ def middle(element,lower,upper):
 def tuna_dif_distance(query,
                     target,
                     a = 0,
-                    b = 0,
+                    b = 1,
                     c = -np.inf,
                     d = np.inf,
                     e = 0,
-                    f = 0,
+                    f = 1,
                     g = -np.inf,
                     h = np.inf,
                     i = 0,
-                    j = 0,
+                    j = 1,
                     k = -np.inf,
                     l = np.inf,
                     m = 0,
@@ -51,14 +53,14 @@ def tuna_dif_distance(query,
     #do these before so we can get interactions with division
     #may have to add jitter later
     
-    total_disagreement = np.sum(dif)
-    ind_disagreements = np.sum(dif**f)
+    total_disagreement = np.sum(dif)+1e-10
+    ind_disagreements = np.sum((dif+1e-10)**f)
     disagreement_length = len(dif)
 
     individuals = middle(a*total_disagreement**b,c,d) + middle(e*ind_disagreements,g,h) + middle(i*disagreement_length**j,k,l)
     interactions = m*total_disagreement*ind_disagreements + n*total_disagreement*disagreement_length + o*ind_disagreements*disagreement_length
 
-    return individuals + interactions
+    return sigmoid(individuals + interactions)
 
 def tuna_plus_distance(query,
                        target,

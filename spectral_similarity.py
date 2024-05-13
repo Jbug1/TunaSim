@@ -177,6 +177,81 @@ def distance(
     return dist
 
 
+def distance_sep(
+    query,
+    target,
+    method: str,
+    need_normalize_result: bool = True,
+) -> float:
+    """
+    Calculate the distance between two spectra, find common peaks.
+    If both ms2_ppm and ms2_da is defined, ms2_da will be used.
+    :param spectrum_query: The query spectrum, need to be in numpy array format.
+    :param spectrum_library: The library spectrum, need to be in numpy array format.
+    :param ms2_ppm: The MS/MS tolerance in ppm.
+    :param ms2_da: The MS/MS tolerance in Da.
+    :param need_clean_spectra: Normalize spectra before comparing, required for not normalized spectrum.
+    :param need_normalize_result: Normalize the result into [0,1].
+    :return: Distance between two spectra
+    """
+
+    # Calculate similarity
+
+    if "reverse" in method:
+        dist = math_distance.reverse_distance(
+            query,
+            target,
+            metric="_".join(method.split("_")[1:]),
+        )
+
+    elif "max" in method:
+        dist = math_distance.max_distance(
+            query,
+            target,
+            metric="_".join(method.split("_")[1:]),
+        )
+
+    elif "min" in method and method != "minkowski":
+
+        dist = math_distance.min_distance(
+            query,
+            target,
+            metric="_".join(method.split("_")[1:]),
+        )
+
+    elif "ave" in method:
+
+        dist = math_distance.ave_distance(
+            query,
+            target,
+            metric="_".join(method.split("_")[1:]),
+        )
+
+    else:
+        function_name = method + "_distance"
+        if hasattr(math_distance, function_name):
+            f = getattr(math_distance, function_name)
+            dist = f(query, target)
+
+        else:
+            raise RuntimeError("Method name: {} error!".format(method))
+
+    # Normalize result
+    if need_normalize_result:
+        if method not in methods_range:
+            try:
+                dist_range = methods_range["_".join(method.split("_")[1:])]
+            except:
+                print(f'error on {method}')
+        else:
+            dist_range = methods_range[method]
+
+        dist = normalize_distance(dist, dist_range)
+
+    return dist
+
+
+
 def multiple_distance(
     spectrum_query: Union[list, np.ndarray],
     spectrum_library: Union[list, np.ndarray],
