@@ -248,6 +248,9 @@ def distance_sep(
 
         dist = normalize_distance(dist, dist_range)
 
+    if np.isnan(dist):
+        dist=1
+        
     return dist
 
 

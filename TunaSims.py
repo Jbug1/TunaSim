@@ -22,6 +22,104 @@ def middle(element,lower,upper):
     else:
         return lower
     
+def tuna_combo_distance(query,
+                    target,
+                    a = 0,
+                    b = 0,
+                    c = 1,
+                    d = -np.inf,
+                    e = np.inf,
+                    f = 0,
+                    g = 0,
+                    h = 1,
+                    i = -np.inf,
+                    j = np.inf,
+                    k = 0,
+                    l = 0,
+                    m = 1,
+                    n = -np.inf,
+                    o = np.inf,
+                    p = 0,
+                    q = 0,
+                    r = 1,
+                    s = -np.inf,
+                    t = np.inf,
+                    u = 0,
+                    v = 0,
+                    w = 1,
+                    x = -np.inf,
+                    y = np.inf,
+                    z = 0,
+                    a_ = 0,
+                    b_ = 1,
+                    c_ = -np.inf,
+                    d_ = np.inf,
+                    ):
+    """
+    function of individual disagreements, sum_disagreement and length 
+    constant and exponential for each
+    knock-in for each
+    knock-out for each
+    Betas for each
+    individual interactions for each
+    clipping of interaction vector
+    """
+
+    #array to hold terms
+    terms = np.zeros(6)
+
+    ind_dif = None
+    ind_add = None
+    ind_mult = None
+
+    if a !=0:
+        dif = np.abs(query-target)
+        ind_dif = (dif+1e-50)**b
+        terms[1] += middle(a*(np.sum(ind_dif)+c),d,e)
+
+    #add always >0
+    if f != 0:
+        add = query+target
+        ind_add = add**g
+        terms[1] += middle(f*(np.sum(ind_add)+h),i,j)
+        
+    if k != 0:
+        mult = query * target
+        ind_mult = (mult+1e-50)**l
+        terms[2] += middle(k*(np.sum(ind_mult)+m)**n,o,p)
+    
+    if q != 0:
+        if ind_dif is None:
+            ind_dif = (dif+1e-50)**b
+        if ind_add is None:
+            ind_add = (add)**g
+
+        terms[3] += np.sum(middle((q*(ind_dif)**r) * (s*(ind_add)**t),u,v))
+
+    if w != 0:
+        if ind_dif is None:
+            dif = np.abs(query-target)
+            ind_dif = (dif+1e-50)**b
+
+        if ind_mult is None:
+            mult = query * target
+            ind_mult = np.sum((mult+1e-50)**g)
+
+        terms[4] += np.sum(middle((w*(ind_dif)**x) * (y*(ind_mult)**z),a_,b_))
+
+    if c_ != 0:
+        if ind_mult is None:
+            mult = query * target
+            ind_mult = (mult+1e-50)**g
+
+        if ind_add is None:
+            ind_add = (add)**g
+
+    terms[5] += np.sum(middle((c_*(ind_mult)**d_) * (e_*(ind_add)**f_),g_,h_))
+
+    return sigmoid(np.sum(terms))
+
+    
 def tuna_dif_distance(query,
                     target,
                     a = 0,
@@ -70,11 +168,11 @@ def tuna_dif_distance(query,
     
     #check who needs to be evaluated
     if a != 0:
-        total_disagreement = np.sum(dif)+1e-20
+        total_disagreement = np.sum(dif)+1e-30
         terms[0] += middle(a*(total_disagreement+b)**c,d,e)
     
     if f != 0:
-        ind_disagreements = np.sum((dif+1e-20)**h)
+        ind_disagreements = np.sum((dif+1e-30)**h)
         terms[1] += middle(f*(ind_disagreements+g),i,j)
 
     if k != 0:
@@ -90,7 +188,7 @@ def tuna_dif_distance(query,
     if z != 0:
         terms[5] += middle(z*(ind_disagreements*disagreement_length+a_)**b_,c_,d_)
 
-    return np.sum(terms)
+    return sigmoid(np.sum(terms))
 
     
 def tuna_dif_distance_old(query,

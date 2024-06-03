@@ -26,16 +26,16 @@ class func_ob:
             tol = 1e-10,
             momentum_weights = [0.8,0.2],
             epsilon = 1.4901161193847656e-08,
-            momentum_type = None,
+            momentum_type = 'none',
             rand = False
     ):
         self.name = name
         self.distance_func = distance_func
         self.regularization_func = regularization_func
         self.loss_func = loss_func
-        self.init_vals = init_vals
+        self.init_vals = np.array(init_vals)
         self.constraints=constraints
-        self.params = params
+        self.params = list(params)
         self.solver=solver
         self.bounds = bounds
         self.lambdas = lambdas
@@ -108,36 +108,44 @@ class func_ob:
 
         if len(self.init_vals) != len(self.params) or len(self.params)!= len(self.lambdas):
             raise ValueError('all input vectors must have same first dimension')
-        
-        if self.constraints is not None and len(self.params) != len(self.constraints):
-            raise ValueError('all input vectors must have same first dimension')
 
-        if self.constraints is not None:
-            mins = np.array([i[0] for i in self.bounds])
-            maxs = np.array([i[1] for i in self.bounds])
+        if self.bounds is not None:
+            
+            mins = np.array([-np.inf for i in range(len(self.params))])
+            maxs = np.array([np.inf for i in range(len(self.params))])
+            
+            for param in self.bounds.keys():
+
+                ind = self.params.index(param)
+                mins[ind]=self.bounds[param][0]
+                maxs[ind]=self.bounds[param][1]
 
         #set index at 0 and initial running grad so that we don't trigger early stop
         i=0
-        running_grad = np.zeros(len(self.params))+10*(self.tol+1e-10)
+        running_grad = np.zeros(len(self.params))+10
 
         while i<self.max_iter and sum(np.abs(running_grad))>self.tol:
 
             #grab individual row
             if self.rand:
-                index = np.random.randint(len(train_data))
+                index = np.random.randint(train_data.shape[0])
             else:
-                index=i
+                index=i%train_data.shape[0]
             
             #estimate gradient and update values
-            if self.momentum_type is None:
+            if self.momentum_type == 'none':
 
                 grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                    continue
                 init_vals -= self.lambdas * grad
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
 
             elif self.momentum_type == 'simple':
 
                 grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                    continue
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
                 init_vals -= self.lambdas * running_grad
 
@@ -145,9 +153,10 @@ class func_ob:
 
                 init_vals -= self.lambdas * self.momentum_weights[0] * running_grad
                 grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                    continue
                 init_vals -= self.lambdas * self.momentum_weights[1] * grad
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad
-
             
             if self.bounds is not None:
                 init_vals = np.clip(init_vals, mins, maxs)
@@ -159,7 +168,7 @@ class func_ob:
 
         #update object based on results
         self.n_iter += i
-        self.converged = sum(running_grad)>self.tol
+        self.converged = sum(running_grad)<self.tol
         self.running_grad = running_grad 
         self.trained_vals = init_vals
 
