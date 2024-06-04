@@ -34,7 +34,8 @@ def create_all_funcs_stoch(reg_funcs,
                     mom_weights, 
                     lambdas=1, 
                     init_vals=None,
-                    max_iters=[1e5]):
+                    max_iters=[1e5],
+                    func=None):
     
     funcs=list()
 
@@ -48,8 +49,8 @@ def create_all_funcs_stoch(reg_funcs,
                                 for max_iter in max_iters:
                                 
                                     if init_vals is None:
-                                        funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_{mom_weight}_{lam}_{max_iter}',
-                                                            distance_func = TunaSims.tuna_dif_distance,
+                                        funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_[{mom_weight}]_{lam}_{max_iter}',
+                                                            distance_func = func,
                                                             regularization_func = reg_funcs[i],
                                                             loss_func = losses[j],
                                                             init_vals = np.ones(len(params_[0]))/10,
@@ -66,7 +67,7 @@ def create_all_funcs_stoch(reg_funcs,
                                     else:
                                         for init_val in init_vals:
                                             funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_{mom_weight}',
-                                                            distance_func = TunaSims.tuna_dif_distance,
+                                                            distance_func = func,
                                                             regularization_func = reg_funcs[i],
                                                             loss_func = losses[j],
                                                             init_vals = init_val,
@@ -82,8 +83,8 @@ def create_all_funcs_stoch(reg_funcs,
                         for lam in lambdas:
                             for max_iter in max_iters:
                                 if init_vals is None:
-                                    funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_{lam}_{max_iter}',
-                                                        distance_func = TunaSims.tuna_dif_distance,
+                                    funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_none_{lam}_{max_iter}',
+                                                        distance_func = func,
                                                         regularization_func = reg_funcs[i],
                                                         loss_func = losses[j],
                                                         init_vals = np.ones(len(params_[0]))/10,
@@ -106,9 +107,6 @@ def trained_res_to_df(trained, test_data):
             print(f'{trained[i].name} has nans')
             continue
 
-        else:
-            print(f'{i}: {trained[i].name}')
-
         trained_func = trained[i].trained_func()
         pred_res = test_data.apply(lambda x: trained_func(x['query'],x['target']),axis=1,result_type='expand').to_numpy()
 
@@ -117,17 +115,20 @@ def trained_res_to_df(trained, test_data):
             continue
         
         res_auc = auc(test_data['match'], pred_res)
-        temp = trained[i].name.split('_')[-5:]
-        name = '_'.join(trained[i].name.split('_')[:-5])
-        temp=[name]+temp
-        temp=temp+[trained[i].lambdas[0], trained[i].max_iter, res_auc]
+        temp = trained[i].name.split('_')[-7:]
+        name = '_'.join(trained[i].name.split('_')[:-7])
+        temp=[name]+temp +[res_auc]
         out.append(temp)
 
     return pd.DataFrame(out,columns=['name','reg','alpha','loss_func','momentum','weights','lambdas','max_iter','auc'])
 
 def orig_metric_to_df(metrics, test_data):
+    """
+    also returns metric scores by match for comparison
+    """
 
     out=list()
+    raw_sims = list()
     for metric in metrics:
 
         pred_res = test_data.apply(lambda x: 1 - spectral_similarity.distance_sep(x['query'],x['target'],method=metric), axis=1, result_type='expand').tolist()
@@ -135,10 +136,14 @@ def orig_metric_to_df(metrics, test_data):
             if np.isnan(pred_res[i]):
                 print(f'{metric}_{i}')
         res_auc = auc(test_data['match'], pred_res)
+        raw_sims.append(pred_res)
 
         out.append([metric,res_auc])
 
-    return pd.DataFrame(out, columns=['metric','AUC'])
+    raw_sims=pd.DataFrame(raw_sims).transpose()
+    raw_sims.columns = metrics
+    
+    return (pd.DataFrame(out, columns=['metric','AUC']),raw_sims)
 
 
 #table other solvers for now

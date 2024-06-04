@@ -136,9 +136,16 @@ class func_ob:
             if self.momentum_type == 'none':
 
                 grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                print(train_data.iloc[index]['match'])
+                print(grad)
+                
+                if i==10:
+                    return yool
                 if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
                     continue
                 init_vals -= self.lambdas * grad
+                print(init_vals)
+
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
 
             elif self.momentum_type == 'simple':
