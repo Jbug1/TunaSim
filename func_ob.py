@@ -4,16 +4,16 @@ from functools import partial
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
 
-def objective(x, args, loss_func, reg_func, distance_func):
+def objective(x, args, loss_func, reg_func, sim_func):
 
     kwargs = {k:v for k,v in zip(args[0],x)}
-    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - distance_func(i['query'], i['target'],**kwargs)),axis=1) + reg_func(x))
+    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - sim_func(i['query'], i['target'],**kwargs)),axis=1) + reg_func(x))
 
 class func_ob:
     def __init__(
             self,
             name,
-            distance_func,
+            sim_func,
             regularization_func,
             loss_func,
             init_vals,
@@ -30,10 +30,11 @@ class func_ob:
             rand = False
     ):
         self.name = name
-        self.distance_func = distance_func
+        self.sim_func = sim_func
         self.regularization_func = regularization_func
         self.loss_func = loss_func
-        self.init_vals = np.array(init_vals)
+        self.init_vals = np.array(init_vals,dtype=float)
+        self.init_vals_ = np.array(init_vals, dtype=float)
         self.constraints=constraints
         self.params = list(params)
         self.solver=solver
@@ -47,7 +48,6 @@ class func_ob:
         self.n_iter = 0
         self.tol=tol
         self.converged = None
-        self.trained_vals = None
         self.running_grad = None
         self.converged = None
         self.trained_vals = None
@@ -60,7 +60,7 @@ class func_ob:
         return partial(objective, 
                         loss_func = self.loss_func, 
                         reg_func = self.regularization_func, 
-                        distance_func = self.distance_func)
+                        sim_func = self.sim_func)
     
     def fit(self, train_data, warm_start=False, verbose=None):
 
@@ -134,17 +134,17 @@ class func_ob:
             
             #estimate gradient and update values
             if self.momentum_type == 'none':
-
-                grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                print(train_data.iloc[index]['match'])
-                print(grad)
                 
-                if i==10:
-                    return yool
+                self.trained_vals = self.init_vals
+                #print(f"obj dist value: {self.trained_func()(train_data.iloc[index:index+1]['query'].to_numpy()[0],train_data.iloc[index:index+1]['target'].to_numpy()[0])}")
+                grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                
                 if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
                     continue
                 init_vals -= self.lambdas * grad
-                print(init_vals)
+                # print(f'grad: {grad}')
+                # print(f'inint_vals: {init_vals}')
+                # print(yool)
 
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
 
@@ -185,5 +185,5 @@ class func_ob:
 
         else:
             kwargs = {k:v for k,v in zip(self.params,self.trained_vals)}
-            return partial(self.distance_func,**kwargs)
+            return partial(self.sim_func,**kwargs)
         

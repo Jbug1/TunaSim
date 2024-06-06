@@ -13,17 +13,14 @@ def middle(element,lower,upper):
     """ 
     return middle element
     """
-    if type(element) == float:
-        if element >= lower:
-            if element <= upper:
-                return element
-            else:
-                return upper
-        else:
-            return lower
-        
-    else:
+
+    if lower<=upper:
+    
         return np.clip(element,lower,upper)
+    
+    #get back onside if crossed over
+    else:
+        return np.clip(element,lower,lower)
     
 def tuna_combo_distance_demo(query,
                     target,
@@ -212,7 +209,7 @@ def tuna_combo_distance(query,
 
     if a != 0:
         dif = np.abs(query-target)
-        ind_dif = (dif + 1e-50) ** b
+        ind_dif = np.abs(dif + 1e-50) ** b
         terms[0] += middle(a * np.sum(ind_dif) + c, d, e)
 
     #add always >0
@@ -228,8 +225,11 @@ def tuna_combo_distance(query,
     
     if p != 0:
         if ind_dif is None:
+            dif = np.abs(query-target)
             ind_dif = (dif+1e-50) ** b
+
         if ind_add is None:
+            add = query+target
             ind_add = add ** g
 
         terms[3] += np.sum(middle((p * ind_dif ** q + r) * (s * ind_add ** t + u), v, w))
@@ -251,6 +251,7 @@ def tuna_combo_distance(query,
             ind_mult = (mult + 1e-50) ** l
 
         if ind_add is None:
+            add = query+target
             ind_add = add ** g
 
         terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** j_ + k_), l_, m_))

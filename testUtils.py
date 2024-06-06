@@ -37,10 +37,56 @@ def create_all_funcs_stoch(reg_funcs,
                     max_iters=[1e5],
                     func=None):
     
+    inits = {'a':1,
+            'b':1,
+            'c':0,
+            'd':0,
+            'e':2,
+            'f':1,
+            'g':1,
+            'h':0,
+            'i':2,
+            'j':3,
+            'k':1,
+            'l':1,
+            'm':0,
+            'n':0,
+            'o':1,
+            'p':1,
+            'q':1,
+            'r':0,
+            's':1,
+            't':-1,
+            'u':0,
+            'v':0.5,
+            'w':0.5,
+            'x':1,
+            'y':1,
+            'z':0,
+            'a_':1,
+            'b_':-1,
+            'c_':0,
+            'd_':0.0,
+            'e_':1.0,
+            'f_' :1,
+            'g_' :1,
+            'h_' :0,
+            'i_' :1,
+            'j_' :-1,
+            'k_': 0,
+            'l_' : 0,
+            'm_' : 1,
+            'n_' : 1,
+            'o_' : 1,
+            'p_' : 0,
+            'q_' : 0,
+            'r_' : 4,
+            's_' : -1}
+
     funcs=list()
 
-    for  i in range(len(reg_funcs)):
-        for j in range(len(losses)):
+    for  _ in range(len(reg_funcs)):
+        for __ in range(len(losses)):
             for momentum in momentums:
                 for name_, params_ in params.items():
                     if momentum != 'none':
@@ -49,11 +95,11 @@ def create_all_funcs_stoch(reg_funcs,
                                 for max_iter in max_iters:
                                 
                                     if init_vals is None:
-                                        funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_[{mom_weight}]_{lam}_{max_iter}',
-                                                            distance_func = func,
-                                                            regularization_func = reg_funcs[i],
-                                                            loss_func = losses[j],
-                                                            init_vals = np.ones(len(params_[0]))/10,
+                                        funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_[{mom_weight}]_{lam}_{max_iter}',
+                                                            sim_func = func,
+                                                            regularization_func = reg_funcs[_],
+                                                            loss_func = losses[__],
+                                                            init_vals = [inits[x] for x in params_[0]],
                                                             bounds=params_[1],
                                                             params = params_[0],
                                                             lambdas = lam,
@@ -66,10 +112,10 @@ def create_all_funcs_stoch(reg_funcs,
                                     #broken...reimpliment
                                     else:
                                         for init_val in init_vals:
-                                            funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_{mom_weight}',
-                                                            distance_func = func,
-                                                            regularization_func = reg_funcs[i],
-                                                            loss_func = losses[j],
+                                            funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_{mom_weight}',
+                                                            sim_func = func,
+                                                            regularization_func = reg_funcs[_],
+                                                            loss_func = losses[__],
                                                             init_vals = init_val,
                                                             params = params_,
                                                             lambdas = lam,
@@ -83,11 +129,11 @@ def create_all_funcs_stoch(reg_funcs,
                         for lam in lambdas:
                             for max_iter in max_iters:
                                 if init_vals is None:
-                                    funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[i]}_{loss_names[j]}_{momentum}_none_{lam}_{max_iter}',
-                                                        distance_func = func,
-                                                        regularization_func = reg_funcs[i],
-                                                        loss_func = losses[j],
-                                                        init_vals = np.ones(len(params_[0]))/10,
+                                    funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_none_{lam}_{max_iter}',
+                                                        sim_func = func,
+                                                        regularization_func = reg_funcs[_],
+                                                        loss_func = losses[__],
+                                                        init_vals = [inits[x] for x in params_[0]],
                                                         bounds=params_[1],
                                                         params = params_[0],
                                                         lambdas = lam,
