@@ -69,7 +69,12 @@ def tuna_combo_distance_demo(query,
                     q_ = -np.inf,
                     r_ = np.inf,
                     s_ = -1,
-                    standardize=True
+                    t_ = 0,
+                    u_ = 1,
+                    v_ = 0,
+                    w_ = -np.inf,
+                    x_ = np.inf,
+                    y_ = -1
                     ):
     """
     function of individual disagreements, sum_disagreement and length 
@@ -136,7 +141,11 @@ def tuna_combo_distance_demo(query,
     #optional normalization by query and target
     if n_ != 0:
 
-        terms *= np.sum(middle((n_ * query ** o_ + p_) + (n_ * query ** o_ + p_), q_, r_)) ** s_
+        terms *= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** s_
+
+    if t_ != 0:
+
+        terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
 
     
     return np.sum(terms)
@@ -189,6 +198,13 @@ def tuna_combo_distance(query,
                     q_ = -np.inf,
                     r_ = np.inf,
                     s_ = -1,
+                    t_ = 0,
+                    u_ = 1,
+                    v_ = 0,
+                    w_ = -np.inf,
+                    x_ = np.inf,
+                    y_ = -1,
+                    z_=1
                     ):
     """
     function of individual disagreements, sum_disagreement and length 
@@ -259,11 +275,13 @@ def tuna_combo_distance(query,
     #optional normalization by query and target
     if n_ != 0:
 
-        terms *= np.sum(middle((n_ * query ** o_ + p_) + (n_ * query ** o_ + p_), q_, r_)) ** s_
+        terms *= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** s_
 
-    return sigmoid(np.sum(terms))
-    
+    if t_ != 0:
 
+        terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+
+    return sigmoid(z__*np.sum(terms))
     
 def tuna_dif_distance(query,
                     target,

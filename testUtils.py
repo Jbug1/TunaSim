@@ -157,7 +157,7 @@ def trained_res_to_df(trained, test_data):
         pred_res = test_data.apply(lambda x: trained_func(x['query'],x['target']),axis=1,result_type='expand').to_numpy()
 
         if np.any(np.isnan(pred_res)) or np.any(np.abs(pred_res)>1e6):
-            print('nans present in pred res')
+            print(f'{trained[i].name}: nans present in pred res')
             continue
         
         res_auc = auc(test_data['match'], pred_res)
@@ -168,15 +168,17 @@ def trained_res_to_df(trained, test_data):
 
     return pd.DataFrame(out,columns=['name','reg','alpha','loss_func','momentum','weights','lambdas','max_iter','auc'])
 
-def orig_metric_to_df(metrics, test_data):
+def orig_metric_to_df(metrics, test_data, unnnormalized=False):
     """
     also returns metric scores by match for comparison
     """
 
     out=list()
     raw_sims = list()
+    unnorm_dists=list()
     for metric in metrics:
 
+        
         pred_res = test_data.apply(lambda x: 1 - spectral_similarity.distance_sep(x['query'],x['target'],method=metric), axis=1, result_type='expand').tolist()
         for i in range(len(pred_res)):
             if np.isnan(pred_res[i]):
@@ -185,11 +187,28 @@ def orig_metric_to_df(metrics, test_data):
         raw_sims.append(pred_res)
 
         out.append([metric,res_auc])
+        
+        #also get unnormalized distance score if needed
+        if unnnormalized:
+            dist_res = test_data.apply(lambda x: spectral_similarity.distance_sep(x['query'],x['target'],method=metric, need_normalize_result=False), axis=1, result_type='expand').tolist()
+
+            for i in range(len(dist_res)):
+                if np.isnan(dist_res[i]):
+                    print(f'{metric}_{i}')
+
+            unnorm_dists.append(dist_res)
 
     raw_sims=pd.DataFrame(raw_sims).transpose()
     raw_sims.columns = metrics
+
+    if unnnormalized:
+        unnorm_dists=pd.DataFrame(unnorm_dists).transpose()
+        unnorm_dists.columns = metrics
     
-    return (pd.DataFrame(out, columns=['metric','AUC']),raw_sims)
+    if unnnormalized:
+        return (pd.DataFrame(out, columns=['metric','AUC']),raw_sims, unnorm_dists)
+    else:
+        return (pd.DataFrame(out, columns=['metric','AUC']),raw_sims)
 
 
 #table other solvers for now
