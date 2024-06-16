@@ -1,6 +1,7 @@
 import TunaSims
 import func_ob
 import spectral_similarity
+import tools
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,75 @@ def dict_combine(dict1,dict2):
 
     return out
 
+def get_func_dist(df, pred_func, name):
+
+    pred_res = df.apply(lambda x: pred_func(x['query'], x['target']), axis=1)
+    score_res = df['match'].to_numpy()
+
+    methods_range = {
+        "proportional_entropy": [0, 1],
+        "proportional_manhattan": [0, 1],
+        "proportional_lorentzian": [0,1],
+        "entropy": [0, np.log(4)],
+        "dot_product": [0,1],
+        #"cosine": [0,1],
+        "absolute_value": [0, 2],
+        "bhattacharya_1": [0, np.arccos(0) ** 2],
+        "bhattacharya_2": [0, np.inf],
+        "canberra": [0, np.inf],
+        #"clark": [0, np.inf],
+        #"avg_l": [0, 1.5],
+        "divergence": [0, np.inf],
+        #"euclidean": [0, np.sqrt(2)],
+        "hellinger": [0, np.inf],
+        #"improved_similarity": [0, np.inf],
+        "lorentzian": [0, np.inf],
+        "mod_lorentzian": [0, np.inf],
+        "manhattan": [0, 2],
+        "matusita": [0, np.sqrt(2)],
+        "mean_character": [0, 2],
+        "motyka": [-0.5, 0],
+        "pearson_correlation": [-1, 1],
+        #"penrose_shape": [0, np.sqrt(2)],
+        #"penrose_size": [0, np.inf],
+        "probabilistic_symmetric_chi_squared": [0, 1],
+        "squared_chord": [0, 2],
+        "mod_squared_chord": [0, 2],
+        "mod2_squared_chord": [0, 2],
+        "proportional_squared_chord" : [0, 2],
+        "squared_euclidean": [0, 2],
+        "symmetric_chi_squared": [0, 0.5 * np.sqrt(2)],
+        "whittaker_index_of_association": [0, np.inf],
+        #"perc_peaks_in_common": [0, 1],
+        #"rbf": [0, 1],
+        "chi2": [0, 1],
+        #"cosine_kernel": [0, 1],
+        "laplacian": [0, 1],
+        #"minkowski": [0, 1],
+        #"correlation": [0, 1],
+        "jensenshannon": [0, 1],
+        #"sqeuclidean": [0, 1],
+        #"gini": [0, 1],
+        #"l2": [0, 1],
+        "common_mass": [0, 1],
+        "cross_ent": [0, np.inf],
+        "proportional_cross_ent": [0, np.inf],
+        "braycurtis": [0, 1],
+        "binary_cross_ent": [0, np.inf],
+        "kl": [0, 1],
+        #"chebyshev": [0, 1],
+        "fidelity": [0, 1],
+        "harmonic_mean": [0, 1],
+        "ruzicka": [0, 1],
+        "roberts": [0, 1],
+        "intersection": [0, 1],}
+
+    score_range = methods_range[name]
+
+    pred_res = np.array([tools.normalize_distance(i, score_range) for i in pred_res])
+    score_res = np.array([tools.normalize_distance(i, score_range) for i in score_res])
+
+    return np.abs(pred_res-score_res)
 
 def create_all_funcs_stoch(reg_funcs,
                     reg_names, 
