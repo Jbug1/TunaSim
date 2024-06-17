@@ -115,7 +115,10 @@ def tuna_combo_distance_demo(query,
         if ind_add is None:
             ind_add = add ** g
 
-        terms[3] += np.sum(middle((p * ind_dif ** q + r) * (s * ind_add ** t + u), v, w))
+        if t >= 0:
+            terms[3] += np.sum(middle((p * ind_dif ** q + r) * (s * ind_add ** t + u), v, w))
+        else:
+            terms[3] += np.sum(middle((p * ind_dif ** q + r) / (s * ind_add ** -t + u), v, w))
 
     if x != 0:
         if ind_dif is None:
@@ -126,7 +129,10 @@ def tuna_combo_distance_demo(query,
             mult = query * target
             ind_mult = (mult+1e-50)**l
 
-        terms[4] += np.sum(middle((x * ind_dif ** y + z) * (a_ *  ind_mult ** b_ + c_), d_, e_))
+        if b_ >=0:
+            terms[4] += np.sum(middle((x * ind_dif ** y + z) * (a_ *  ind_mult ** b_ + c_), d_, e_))
+        else:
+            terms[4] += np.sum(middle((x * ind_dif ** y + z) / (a_ *  ind_mult ** -b_ + c_), d_, e_))
 
     if f_ != 0:
         if ind_mult is None:
@@ -136,18 +142,26 @@ def tuna_combo_distance_demo(query,
         if ind_add is None:
             ind_add = add ** g
 
-        terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** j_ + k_), l_, m_))
+        if j_ >=0:
+            terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** j_ + k_), l_, m_))
+        else:
+            terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** -j_ + k_), l_, m_))
 
     #optional normalization by query and target
     if n_ != 0:
 
-        terms *= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** s_
+        if s_ >=0:
+            terms *= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** s_
+        else:
+            terms /= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** -s_
 
     if t_ != 0:
 
-        terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+        if y_>=0:
+            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+        else:
+            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** -y_
 
-    
     return np.sum(terms)
   
     
@@ -204,7 +218,7 @@ def tuna_combo_distance(query,
                     w_ = -np.inf,
                     x_ = np.inf,
                     y_ = -1,
-                    z_=1
+                    z_ = 1
                     ):
     """
     function of individual disagreements, sum_disagreement and length 
@@ -225,8 +239,8 @@ def tuna_combo_distance(query,
 
     if a != 0:
         dif = np.abs(query-target)
-        ind_dif = np.abs(dif + 1e-50) ** b
-        terms[0] += middle(a * np.sum(ind_dif) + c, d, e)
+        ind_dif = (dif + 1e-50) ** b
+        terms[1] += middle(a * np.sum(ind_dif) + c, d, e)
 
     #add always >0
     if f != 0:
@@ -241,14 +255,14 @@ def tuna_combo_distance(query,
     
     if p != 0:
         if ind_dif is None:
-            dif = np.abs(query-target)
             ind_dif = (dif+1e-50) ** b
-
         if ind_add is None:
-            add = query+target
             ind_add = add ** g
 
-        terms[3] += np.sum(middle((p * ind_dif ** q + r) * (s * ind_add ** t + u), v, w))
+        if t >= 0:
+            terms[3] += np.sum(middle((p * ind_dif ** q + r) * (s * ind_add ** t + u), v, w))
+        else:
+            terms[3] += np.sum(middle((p * ind_dif ** q + r) / (s * ind_add ** -t + u), v, w))
 
     if x != 0:
         if ind_dif is None:
@@ -259,7 +273,10 @@ def tuna_combo_distance(query,
             mult = query * target
             ind_mult = (mult+1e-50)**l
 
-        terms[4] += np.sum(middle((x * ind_dif ** y + z) * (a_ *  ind_mult ** b_ + c_), d_, e_))
+        if b_ >=0:
+            terms[4] += np.sum(middle((x * ind_dif ** y + z) * (a_ *  ind_mult ** b_ + c_), d_, e_))
+        else:
+            terms[4] += np.sum(middle((x * ind_dif ** y + z) / (a_ *  ind_mult ** -b_ + c_), d_, e_))
 
     if f_ != 0:
         if ind_mult is None:
@@ -267,21 +284,29 @@ def tuna_combo_distance(query,
             ind_mult = (mult + 1e-50) ** l
 
         if ind_add is None:
-            add = query+target
             ind_add = add ** g
 
-        terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** j_ + k_), l_, m_))
+        if j_ >=0:
+            terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** j_ + k_), l_, m_))
+        else:
+            terms[5] += np.sum(middle((f_ * ind_mult ** g_ +h_) * (i_ * ind_add ** -j_ + k_), l_, m_))
 
     #optional normalization by query and target
     if n_ != 0:
 
-        terms *= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** s_
+        if s_ >=0:
+            terms *= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** s_
+        else:
+            terms /= np.sum(middle(n_ * query ** o_ + p_, q_, r_) + middle(n_ * query ** o_ + p_, q_, r_)) ** -s_
 
     if t_ != 0:
 
-        terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+        if y_>=0:
+            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+        else:
+            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** -y_
 
-    return sigmoid(z__*np.sum(terms))
+    return sigmoid(z_*np.sum(terms))
     
 def tuna_dif_distance(query,
                     target,

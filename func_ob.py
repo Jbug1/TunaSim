@@ -136,22 +136,23 @@ class func_ob:
             if self.momentum_type == 'none':
                 
                 self.trained_vals = self.init_vals
-                #print(f"obj dist value: {self.trained_func()(train_data.iloc[index:index+1]['query'].to_numpy()[0],train_data.iloc[index:index+1]['target'].to_numpy()[0])}")
                 grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 
                 if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                    print('bad grad')
+                    i+=1
                     continue
-                init_vals -= self.lambdas * grad
-                # print(f'grad: {grad}')
-                # print(f'inint_vals: {init_vals}')
-                # print(yool)
 
+                init_vals -= self.lambdas * grad
+    
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
 
             elif self.momentum_type == 'simple':
 
                 grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                    print('bad grad')
+                    i+=1
                     continue
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
                 init_vals -= self.lambdas * running_grad
@@ -161,6 +162,8 @@ class func_ob:
                 init_vals -= self.lambdas * self.momentum_weights[0] * running_grad
                 grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                    print('bad grad')
+                    i+=1
                     continue
                 init_vals -= self.lambdas * self.momentum_weights[1] * grad
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad

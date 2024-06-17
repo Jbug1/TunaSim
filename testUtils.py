@@ -102,57 +102,13 @@ def create_all_funcs_stoch(reg_funcs,
                     momentums, 
                     params, 
                     mom_weights, 
+                    inits,
                     lambdas=1, 
-                    init_vals=None,
                     max_iters=[1e5],
-                    func=None):
+                    func=None,
+                    ):
     
-    inits = {'a':1,
-            'b':1,
-            'c':0,
-            'd':0,
-            'e':2,
-            'f':1,
-            'g':1,
-            'h':0,
-            'i':2,
-            'j':3,
-            'k':1,
-            'l':1,
-            'm':0,
-            'n':0,
-            'o':1,
-            'p':1,
-            'q':1,
-            'r':0,
-            's':1,
-            't':-1,
-            'u':0,
-            'v':0.5,
-            'w':0.5,
-            'x':1,
-            'y':1,
-            'z':0,
-            'a_':1,
-            'b_':-1,
-            'c_':0,
-            'd_':0.0,
-            'e_':1.0,
-            'f_' :1,
-            'g_' :1,
-            'h_' :0,
-            'i_' :1,
-            'j_' :-1,
-            'k_': 0,
-            'l_' : 0,
-            'm_' : 1,
-            'n_' : 1,
-            'o_' : 1,
-            'p_' : 0,
-            'q_' : 0,
-            'r_' : 4,
-            's_' : -1}
-
+    
     funcs=list()
 
     for  _ in range(len(reg_funcs)):
@@ -163,43 +119,8 @@ def create_all_funcs_stoch(reg_funcs,
                         for mom_weight in mom_weights:
                             for lam in lambdas:
                                 for max_iter in max_iters:
-                                
-                                    if init_vals is None:
-                                        funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_[{mom_weight}]_{lam}_{max_iter}',
-                                                            sim_func = func,
-                                                            regularization_func = reg_funcs[_],
-                                                            loss_func = losses[__],
-                                                            init_vals = [inits[x] for x in params_[0]],
-                                                            bounds=params_[1],
-                                                            params = params_[0],
-                                                            lambdas = lam,
-                                                            solver = 'stoch',
-                                                            max_iter = max_iter,
-                                                            momentum_weights = mom_weight,
-                                                            momentum_type = momentum
-                                        ))
-
-                                    #broken...reimpliment
-                                    else:
-                                        for init_val in init_vals:
-                                            funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_{mom_weight}',
-                                                            sim_func = func,
-                                                            regularization_func = reg_funcs[_],
-                                                            loss_func = losses[__],
-                                                            init_vals = init_val,
-                                                            params = params_,
-                                                            lambdas = lam,
-                                                            solver = 'stoch',
-                                                            max_iter = max_iter,
-                                                            momentum_weights = mom_weight,
-                                                            momentum_type = momentum
-                                        ))
-                                            
-                    else:
-                        for lam in lambdas:
-                            for max_iter in max_iters:
-                                if init_vals is None:
-                                    funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_none_{lam}_{max_iter}',
+                    
+                                    funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_[{mom_weight}]_{lam}_{max_iter}',
                                                         sim_func = func,
                                                         regularization_func = reg_funcs[_],
                                                         loss_func = losses[__],
@@ -209,8 +130,25 @@ def create_all_funcs_stoch(reg_funcs,
                                                         lambdas = lam,
                                                         solver = 'stoch',
                                                         max_iter = max_iter,
+                                                        momentum_weights = mom_weight,
                                                         momentum_type = momentum
                                     ))
+                                            
+                    else:
+                        for lam in lambdas:
+                            for max_iter in max_iters:
+                                funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_none_{lam}_{max_iter}',
+                                                    sim_func = func,
+                                                    regularization_func = reg_funcs[_],
+                                                    loss_func = losses[__],
+                                                    init_vals = [inits[x] for x in params_[0]],
+                                                    bounds=params_[1],
+                                                    params = params_[0],
+                                                    lambdas = lam,
+                                                    solver = 'stoch',
+                                                    max_iter = max_iter,
+                                                    momentum_type = momentum
+                                ))
     
     return funcs
 
