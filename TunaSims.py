@@ -111,8 +111,10 @@ def tuna_combo_distance_demo(query,
     
     if p != 0:
         if ind_dif is None:
+            dif = np.abs(query-target)
             ind_dif = (dif+1e-50) ** b
         if ind_add is None:
+            add = query+target
             ind_add = add ** g
 
         if t >= 0:
@@ -140,6 +142,7 @@ def tuna_combo_distance_demo(query,
             ind_mult = (mult + 1e-50) ** l
 
         if ind_add is None:
+            add = query+target
             ind_add = add ** g
 
         if j_ >=0:
@@ -255,8 +258,10 @@ def tuna_combo_distance(query,
     
     if p != 0:
         if ind_dif is None:
+            dif = np.abs(query-target)
             ind_dif = (dif+1e-50) ** b
         if ind_add is None:
+            add = query+target
             ind_add = add ** g
 
         if t >= 0:
@@ -284,6 +289,7 @@ def tuna_combo_distance(query,
             ind_mult = (mult + 1e-50) ** l
 
         if ind_add is None:
+            add = query+target
             ind_add = add ** g
 
         if j_ >=0:
