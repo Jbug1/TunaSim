@@ -161,9 +161,9 @@ def tuna_combo_distance_demo(query,
     if t_ != 0:
 
         if y_>=0:
-            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) * middle(t_ * query ** u_ + v_, w_, x_)) ** y_
         else:
-            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** -y_
+            terms /= np.sum(middle(t_ * query ** u_ + v_, w_, x_) * middle(t_ * query ** u_ + v_, w_, x_)) ** -y_
 
     return np.sum(terms)
   
@@ -308,9 +308,9 @@ def tuna_combo_distance(query,
     if t_ != 0:
 
         if y_>=0:
-            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** y_
+            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) * middle(t_ * query ** u_ + v_, w_, x_)) ** y_
         else:
-            terms *= np.sum(middle(t_ * query ** u_ + v_, w_, x_) + middle(t_ * query ** u_ + v_, w_, x_)) ** -y_
+            terms /= np.sum(middle(t_ * query ** u_ + v_, w_, x_) * middle(t_ * query ** u_ + v_, w_, x_)) ** -y_
 
     return sigmoid(z_*np.sum(terms))
     

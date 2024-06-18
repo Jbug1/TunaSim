@@ -135,7 +135,6 @@ class func_ob:
             #estimate gradient and update values
             if self.momentum_type == 'none':
                 
-                self.trained_vals = self.init_vals
                 grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 
                 if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
@@ -165,6 +164,7 @@ class func_ob:
                     print('bad grad')
                     i+=1
                     continue
+                
                 init_vals -= self.lambdas * self.momentum_weights[1] * grad
                 running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad
             
