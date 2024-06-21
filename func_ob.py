@@ -7,7 +7,7 @@ from scipy.optimize import approx_fprime as approx
 def objective(x, args, loss_func, reg_func, sim_func):
 
     kwargs = {k:v for k,v in zip(args[0],x)}
-    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - sim_func(i['query'], i['target'],**kwargs)),axis=1) + reg_func(x))
+    return np.sum(args[1].apply(lambda i: loss_func(i['match'] - sim_func(i['precursor'],i['mzs'],i['query'], i['target'],**kwargs)),axis=1) + reg_func(x))
 
 class func_ob:
     def __init__(

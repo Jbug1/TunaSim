@@ -99,7 +99,7 @@ def common_mass_distance(p, q):
 
 def cross_entropy(p, q):
 
-    epsilon = 1e-10
+    epsilon = 1e-50
     q = q + epsilon
     return -np.sum(p * np.log(q))
 
@@ -137,7 +137,7 @@ def kl_distance(p, q):
 
 def cross_ent_distance(p, q):
 
-    return max(cross_entropy(p, q), cross_entropy(q, p))
+    return (cross_entropy(p, q) + cross_entropy(q, p))/2
 
 def proportional_cross_ent_distance(p, q):
 

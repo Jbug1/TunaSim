@@ -162,7 +162,7 @@ def trained_res_to_df(trained, test_data):
             continue
 
         trained_func = trained[i].trained_func()
-        pred_res = test_data.apply(lambda x: trained_func(x['query'],x['target']),axis=1,result_type='expand').to_numpy()
+        pred_res = test_data.apply(lambda x: trained_func(x['precursor'],x['mzs'],x['query'],x['target']),axis=1,result_type='expand').to_numpy()
 
         if np.any(np.isnan(pred_res)) or np.any(np.abs(pred_res)>1e6):
             print(f'{trained[i].name}: nans present in pred res')

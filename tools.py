@@ -309,7 +309,7 @@ def match_peaks_in_spectra_separate(spec_a, spec_b, ms2_ppm=None, ms2_da=None):
     else:
         spec_merged = np.array([[0.0, 0.0, 0.0]], dtype=np.float64)
 
-    return (spec_merged[:,1],spec_merged[:,2])
+    return (spec_merged[:,0],spec_merged[:,1],spec_merged[:,2])
 
 
 

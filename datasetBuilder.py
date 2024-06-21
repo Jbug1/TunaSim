@@ -668,7 +668,7 @@ def create_cleaned_df(
                             result_type='expand'
                          )
                         
-                    clean_matches.columns=[f'query_{remove}_{i}_{j}_{k}',f'target_{remove}_{i}_{j}_{k}']
+                    clean_matches.columns=[f'mzs_{remove}_{i}_{j}_{k}',f'query_{remove}_{i}_{j}_{k}',f'target_{remove}_{i}_{j}_{k}']
 
                     out_df = pd.concat(
                         (   
@@ -678,6 +678,7 @@ def create_cleaned_df(
                         axis=1,
                     )
 
+        out_df['precursor'] = (matches_df['precquery'] + matches_df['prectarget'])/2
         out_df['match']=matches_df['match']
         return out_df
 
