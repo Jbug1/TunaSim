@@ -10,39 +10,43 @@ import itertools
 import math
 
 
-def get_least_corr_and_control(dataset, num):
+def get_least_corr_and_control(dataset, num, max_combos=1e6):
 
     lowest_seen = 1
     best_group=None
 
+    corrs = dataset.corr()
+
+    #create helper variable so that we dont try more than max combos
+    _=0
     #choose every combo for given number
     for combo in itertools.combinations(range(len(dataset.columns)),r=num):
 
         corr = 0
 
-        if set(combo) == set([3,4,0,1]):
-            print('seen')
         for i in combo:
             for j in combo:
 
                 if i>j:
-                    corr += (np.corrcoef(dataset[dataset.columns[i]],dataset[dataset.columns[j]]))[0,1]/math.comb(num,2)
+                    corr += corrs.iloc[i,j]/math.comb(num,2)
 
         if corr < lowest_seen:
             lowest_seen = corr
             best_group = combo
 
+        _+=1
+        if _  == max_combos:
+            break
+
     rand_control = np.random.choice(list(range(dataset.shape[1])),replace=False,size=num)
     corr=0
-    rand_control = [0,1,3,4]
-    print(rand_control)
     for i in rand_control:
             for j in rand_control:
 
                 if i>j:
-                    corr += (np.corrcoef(dataset[dataset.columns[i]],dataset[dataset.columns[j]]))[0,1]/math.comb(num,2)
+                    corr += corrs.iloc[i,j]/math.comb(num,2)
 
-    return((best_group,lowest_seen),(rand_control,corr))
+    return((np.array(best_group),lowest_seen),(np.array(rand_control),corr))
                     
 
 def dict_combine(dict1,dict2):
