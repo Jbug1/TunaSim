@@ -68,7 +68,7 @@ def dict_combine(dict1,dict2):
 
 def get_func_dist(df, pred_func, name):
 
-    pred_res = df.apply(lambda x: pred_func(x['query'], x['target']), axis=1)
+    pred_res = df.apply(lambda x: pred_func(x['mzs'], x['precursor'],x['query'], x['target']), axis=1)
     score_res = df['match'].to_numpy()
 
     methods_range = {
@@ -163,6 +163,7 @@ def create_all_funcs_stoch(reg_funcs,
                     
                                     funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_[{mom_weight}]_{lam}_{max_iter}',
                                                         sim_func = func,
+                                                        regularization_name = reg_names[_],
                                                         regularization_func = reg_funcs[_],
                                                         loss_func = losses[__],
                                                         init_vals = [inits[x] for x in params_[0]],
@@ -180,6 +181,7 @@ def create_all_funcs_stoch(reg_funcs,
                             for max_iter in max_iters:
                                 funcs.append(func_ob.func_ob(name=f'{name_}_{reg_names[_]}_{loss_names[__]}_{momentum}_none_{lam}_{max_iter}',
                                                     sim_func = func,
+                                                    regularization_name = reg_names[_],
                                                     regularization_func = reg_funcs[_],
                                                     loss_func = losses[__],
                                                     init_vals = [inits[x] for x in params_[0]],

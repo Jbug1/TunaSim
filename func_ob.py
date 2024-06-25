@@ -18,6 +18,7 @@ class func_ob:
             loss_func,
             init_vals,
             params,
+            regularization_name = '',
             constraints = None,
             solver = 'stoch',
             bounds = None,
@@ -31,6 +32,7 @@ class func_ob:
     ):
         self.name = name
         self.sim_func = sim_func
+        self.regularization_name = regularization_name
         self.regularization_func = regularization_func
         self.loss_func = loss_func
         self.init_vals = np.array(init_vals,dtype=float)

@@ -565,7 +565,7 @@ def tuna_combo_distance_demo(precursor,
 
     if a != 0:
         dif = np.abs(query-target)
-        ind_dif = ind_dif = (dif) ** b
+        ind_dif = (dif) ** b
         terms[1] += middle(a * np.sum(ind_dif) + c, d, e)
 
     #add always >0
@@ -635,7 +635,7 @@ def tuna_combo_distance_demo(precursor,
         else:
             terms /= np.sum(middle(t_ * query ** u_ + v_, w_, x_) * middle(t_ * target ** u_ + v_, w_, x_)) ** -y_
 
-    return sigmoid(z_*np.sum(terms))
+    return np.sum(terms)
   
 def tuna_dif_distance(query,
                     target,
