@@ -1,0 +1,111 @@
+def get_mat_pos(a,b):
+
+    energies = [0,10,20,40]
+    row = energies.index(a)
+    col = energies.index(b)
+
+    return(row,col)
+
+fullRun  = False
+if fullRun:
+
+    metlin='/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_highres_inst.pkl'
+    metlin_ = pd.read_pickle(metlin)
+    metlin_=metlin_[metlin_['instrument']=='Q-TOF']
+
+    ms2_da = 0.05
+    noise_removal = 0.0
+    precursor_thresh=3
+
+    counts_dict = dict()
+    sims_dict = dict()
+
+    pos = [True,False]
+
+    #instantiate all dicts
+    for i in pos:
+        for j in pos:
+            for k in pos:
+                for l in pos:
+                    for m in pos:
+                        counts_dict[(i,j,k,l,m)] = np.zeros((4,4))
+                        sims_dict[(i,j,k,l,m)] = np.zeros((4,4))
+
+
+    for i in range(len(metlin_)):
+
+        core_sub = metlin_[(metlin_['inchi_base']==metlin_.iloc[i]['inchi_base']) | (abs(metlin_.iloc[i]["precursor"] - metlin_["precursor"]) < tools.ppm(metlin_.iloc[i]["precursor"], precursor_thresh))]
+
+        base_spec = tools.clean_spectrum(metlin_.iloc[i]['spectrum'], max_mz=metlin_.iloc[i]['precursor'],noise_removal=noise_removal)
+
+        for j in range(len(core_sub)):
+
+            #don't compare to self
+            if metlin_.iloc[i]['ID'] == core_sub.iloc[j]['ID']:
+                continue
+
+            spec_j = tools.clean_spectrum(core_sub.iloc[j]['spectrum'], max_mz=core_sub.iloc[j]['precursor'],noise_removal=noise_removal)
+            spec_j[:,1] = spec_j[:,1]/np.sum(spec_j[:,1])
+
+            same_mode = False
+            same_precursor_type = False
+            same_key = False
+            same_base=False
+            within_ppm=False
+
+            #all possibilities here
+            if metlin_.iloc[i]['mode'] == core_sub.iloc[j]['mode']:
+                same_mode = True 
+
+            if metlin_.iloc[i]['precursor_type'] == core_sub.iloc[j]['precursor_type']:
+                same_precursor_type = True   
+
+            if metlin_.iloc[i]['inchi'] == core_sub.iloc[j]['inchi']:
+                same_key = True   
+
+            if metlin_.iloc[i]['inchi_base'] == core_sub.iloc[j]['inchi_base']:
+                same_base = True
+
+            if abs(metlin_.iloc[i]["precursor"] - core_sub.iloc[j]["precursor"]) < tools.ppm(metlin_.iloc[i]["precursor"], precursor_thresh):
+                within_ppm = True                                                                          
+
+            #get key and position within matrix
+            key = (same_mode, same_precursor_type, same_key, same_base, within_ppm)
+            
+
+            if metlin_.iloc[i]['collision_energy'] < core_sub.iloc[j]['collision_energy']:
+                low_spec = base_spec
+                high_spec = spec_j
+                matrix_pos = get_mat_pos(metlin_.iloc[i]['collision_energy'],core_sub.iloc[j]['collision_energy'])
+
+            else:
+                low_spec = spec_j
+                high_spec = base_spec
+                matrix_pos = get_mat_pos(core_sub.iloc[j]['collision_energy'],metlin_.iloc[i]['collision_energy'])
+                
+            matched = tools.match_peaks_in_spectra(low_spec, high_spec, ms2_da=ms2_da)
+
+            low_sum = np.sum(matched[:,1][np.where(matched[:,2]>0)])
+            high_sum = np.sum(matched[:,2][np.where(matched[:,1]>0)])
+
+            #add the low collision energy sum on the vertical column
+            counts_dict[key][matrix_pos[0],matrix_pos[1]]+=1
+            counts_seen = counts_dict[key][matrix_pos[0],matrix_pos[1]]
+
+            #add the lower collision energy data
+            sims_dict[key][matrix_pos[0],matrix_pos[1]] = (low_sum/(counts_seen)) + sims_dict[key][matrix_pos[0],matrix_pos[1]]*(counts_seen-1)/counts_seen
+
+            counts_dict[key][matrix_pos[1],matrix_pos[0]]+=1
+            counts_seen = counts_dict[key][matrix_pos[1],matrix_pos[0]]
+
+            #add the higher collision energy data
+            sims_dict[key][matrix_pos[1],matrix_pos[0]] = (high_sum/(counts_seen)) + sims_dict[key][matrix_pos[1],matrix_pos[0]]*(counts_seen-1)/counts_seen
+
+
+    with open(f'{outputs_path}/metlin_ce/sims_dict.pkl', 'wb') as handle:
+
+                pickle.dump(sims_dict, handle)
+
+    with open(f'{outputs_path}/metlin_ce/counts_dict.pkl', 'wb') as handle:
+
+                pickle.dump(counts_dict, handle)

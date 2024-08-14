@@ -8,9 +8,57 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score as auc
 import itertools
 import math
+import pickle
 
 
-def get_least_corr_and_control(dataset, num, max_combos=1e6):
+def create_model_and_ind_data(input_path, outputs_path, comparison_metrics):
+
+
+        df = pd.read_pickle(input_path)
+
+        #for each cleaning setting, we are going to calculate AUCs
+        #hang onto old columns so we know what cleaning setting was associated with these AUCs
+        ind_aucs_=None
+        df_data_gbcs = None
+        df_unnorm_dists = None
+        for j in range(int(df.shape[1]/3)):
+
+            #jonah...why 3 and not 2?????
+            #jonah renaming the columns in sub and not inds appears to be wrong
+            # jonah why do we need unormalized distance
+
+            sub = df.iloc[:,(3*j)+1:3*(j+1)] #this corresponds to one cleaned query and target
+            old_cols = sub.columns
+            sub.columns=['query','target']
+            sub['match'] = df['match'].tolist()
+
+            #only need one unnormed setting
+            #jonah don't know what the deal is with unnormed
+            # if j == 0:
+            #     ind_aucs, inds, inds_unnorm = orig_metric_to_df(comparison_metrics, sub, unnnormalized=True)
+            #     train_unnorm_dists = pd.concat((train_unnorm_dists,inds_unnorm), axis=1)
+            #     train_unnorm_dists_.append(train_unnorm_dists)
+            
+            ind_aucs, inds = orig_metric_to_df(comparison_metrics, sub)
+            ind_aucs['metric'] = [i + '_' + old_cols[0] for i in ind_aucs['metric']]
+
+            ind_aucs_ = pd.concat((ind_aucs_, ind_aucs))
+            sub = sub.iloc[:,:2]
+            sub.columns=old_cols
+            df_data_gbcs = pd.concat((df_data_gbcs,inds), axis=1)
+
+            df_data_gbcs['match'] = df['match'].tolist()
+
+        with open(f'{outputs_path}/model_data.pkl', 'wb') as handle:
+
+            pickle.dump(df_data_gbcs, handle)
+
+        with open(f'{outputs_path}/ind_aucs.pkl', 'wb') as handle:
+
+            pickle.dump(ind_aucs, handle)
+
+
+def get_least_corr_and_control(dataset, num, max_combos=1e6, num_condition = 1, num_control = 1):
 
     lowest_seen = 1
     best_group=None
