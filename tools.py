@@ -390,73 +390,15 @@ def normalize_distance(dist, dist_range):
 
     return result
 
-
-def _weight_intensity_by_entropy(x):
-    WEIGHT_START = 0.25
-    ENTROPY_CUTOFF = 3
-    weight_slope = (1 - WEIGHT_START) / ENTROPY_CUTOFF
-
-    if np.sum(x) > 0:
-        entropy_x = scipy.stats.entropy(x)
-        if entropy_x < ENTROPY_CUTOFF:
-            weight = WEIGHT_START + weight_slope * entropy_x
-            x = np.power(x, weight)
-            
-    return x
-
-def _weight_intensity_by_entropy(x):
-    WEIGHT_START = 0.25
-    ENTROPY_CUTOFF = 3
-    weight_slope = (1 - WEIGHT_START) / ENTROPY_CUTOFF
-
-    if np.sum(x) > 0:
-        entropy_x = scipy.stats.entropy(x)
-        if entropy_x < ENTROPY_CUTOFF:
-            weight = WEIGHT_START + weight_slope * entropy_x
-            x = np.power(x, weight)
-            x_sum = np.sum(x)
-            x = x / x_sum
-
-    return x
-
-
-def weight_intensity_by_entropy(x):
+def weight_intensity(x, reweight_method):
     """
-    Jonah version of weight_intensity function
-    """
-    x = np.power(x, scipy.stats.entropy(x))
-    return x / np.sum(x)
-
-
-def weight_intensity(x, reweight_method=None):
-    """
-    Jonah version of weight_intensity function
+    flexible version of weight_intensity function
     """
     if len(x) ==0 or np.sum(x) == 0 or reweight_method is None:
         return x
+    
+    return reweight_method(x)
 
-    if reweight_method == 'logent':
-        power = max(0.25,np.log(scipy.stats.entropy(x)))
 
-    elif reweight_method == 'ent':
-        power = min(scipy.stats.entropy(x),2)
 
-    elif reweight_method =='normalent':
-        if len(x)>1:
-            power = max(0.25,scipy.stats.entropy(x)/np.log(len(x)))
-        else:
-            power = 1
 
-    elif reweight_method == 'loglen':
-        power=np.log(len(x))
-
-    elif reweight_method =='orig':
-        x = _weight_intensity_by_entropy(x)
-        return x
-
-    else:
-        power=reweight_method
-
-    x = np.power(x, power)
-    x = x/ np.sum(x)
-    return x

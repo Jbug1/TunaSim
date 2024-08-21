@@ -9,6 +9,7 @@ from sklearn.metrics import roc_auc_score as auc
 import itertools
 import math
 import pickle
+from bisect import bisect_left
 
 
 def create_model_and_ind_data(input_path, outputs_path, comparison_metrics):
@@ -60,8 +61,8 @@ def create_model_and_ind_data(input_path, outputs_path, comparison_metrics):
 
 def get_least_corr_and_control(dataset, num, max_combos=1e6, num_condition = 1, num_control = 1):
 
-    lowest_seen = 1
-    best_group=None
+    lowest_seen = list(np.ones(num_condition))
+    best_groups = list(np.zeros(num_condition))
 
     corrs = dataset.corr()
 
@@ -71,30 +72,38 @@ def get_least_corr_and_control(dataset, num, max_combos=1e6, num_condition = 1, 
     for combo in itertools.combinations(range(len(dataset.columns)),r=num):
 
         corr = 0
-
         for i in combo:
             for j in combo:
 
                 if i>j:
                     corr += corrs.iloc[i,j]/math.comb(num,2)
 
-        if corr < lowest_seen:
-            lowest_seen = corr
-            best_group = combo
+        # if corr is among lowest, insert corr and combo
+        if corr < lowest_seen[-1]:
+            ind = bisect_left(lowest_seen, corr)
+            lowest_seen.insert(ind, corr)
+            best_groups.insert(ind, combo)
+
+            #keep only the best n
+            lowest_seen = lowest_seen[:num_condition]
+            best_groups = best_groups[:num_condition]
 
         _+=1
         if _  == max_combos:
             break
 
-    rand_control = np.random.choice(list(range(dataset.shape[1])),replace=False,size=num)
-    corr=0
-    for i in rand_control:
-            for j in rand_control:
-
+    rand_control = [np.random.choice(list(range(dataset.shape[1])),replace=False,size=num) for i in range(num_control)]
+    control_corrs = np.zeros(num_control)
+    for _ in range(num_control):
+        corr=0
+        for i in rand_control[_]:
+            for j in rand_control[_]:
                 if i>j:
                     corr += corrs.iloc[i,j]/math.comb(num,2)
 
-    return((np.array(best_group),lowest_seen),(np.array(rand_control),corr))
+        control_corrs[_]=corr
+
+    return((np.array(best_groups),lowest_seen),(np.array(rand_control),control_corrs))
                     
 
 def dict_combine(dict1,dict2):
