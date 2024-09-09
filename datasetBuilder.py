@@ -9,6 +9,7 @@ import copy
 import time
 import bisect
 import os
+import ms_entropy
 
 
 def get_spec_features(spec_query,spec_target):
@@ -129,58 +130,45 @@ def clean_and_spec_features(
 
     if centroid_type == "ppm":
 
-        if prec_remove is not None:
-
-            spec1_ = tools.clean_spectrum(
-                spec1,
-                noise_removal=noise_thresh,
-                ms2_ppm=centroid_thresh,
-                standardize=False,
-                max_mz=prec_remove(prec1),
-            )
-            spec2_ = tools.clean_spectrum(
-                spec2,
-                noise_removal=noise_thresh,
-                ms2_ppm=centroid_thresh,
-                standardize=False,
-                max_mz=prec_remove(prec2),
-            )
-        else:
-            spec1_ = tools.clean_spectrum(
-                spec1,
-                noise_removal=noise_thresh,
-                ms2_ppm=centroid_thresh,
-                standardize=True,
-                max_mz=None,
-            )
-            spec2_ = tools.clean_spectrum(
-                spec2,
-                noise_removal=noise_thresh,
-                ms2_ppm=centroid_thresh,
-                standardize=False,
-                max_mz=None,
-            )
-
+        spec1_ = tools.clean_spectrum(
+            spec1,
+            noise_removal = noise_thresh,
+            ms2_ppm = centroid_thresh,
+            standardize = False,
+            max_mz=prec_remove(prec1),
+        )
+        spec2_ = tools.clean_spectrum(
+            spec2,
+            noise_threshold = noise_thresh,
+            ms2_ppm = centroid_thresh,
+            standardize = False,
+            max_mz=prec_remove(prec1),
+        )
     else:
-        if prec_remove is not None:
-            spec1_ = tools.clean_spectrum(
-                spec1, noise_removal=noise_thresh, ms2_da=centroid_thresh, max_mz=prec_remove(prec1)
-            )
-            spec2_ = tools.clean_spectrum(
-                spec2, noise_removal=noise_thresh, ms2_da=centroid_thresh, max_mz=prec_remove(prec2)
-            )
-        else:
-            spec1_ = tools.clean_spectrum(
-            spec1, noise_removal=noise_thresh, ms2_da=centroid_thresh, standardize=True
-            )
-            spec2_ = tools.clean_spectrum(
-                spec2, noise_removal=noise_thresh, ms2_da=centroid_thresh, standardize=True
-            )
+        spec1_ = tools.clean_spectrum(
+            spec1,
+            noise_removal = noise_thresh,
+            ms2_da = centroid_thresh,
+            standardize = False,
+            max_mz=prec_remove(prec1),
+        )
+        spec2_ = tools.clean_spectrum(
+            spec2,
+            noise_removal = noise_thresh,
+            ms2_da = centroid_thresh,
+            standardize = False,
+            max_mz=prec_remove(prec1),
+        )
 
     if not original_order:
         # reweight by given reweight_method
-        spec1_[:,1]= tools.weight_intensity(spec1_[:,1], reweight_method)
-        spec2_[:,1]= tools.weight_intensity(spec2_[:,1], reweight_method)
+        try:
+            spec1_[:,1]= tools.weight_intensity(spec1_[:,1], reweight_method)
+            spec2_[:,1]= tools.weight_intensity(spec2_[:,1], reweight_method)
+        except:
+            print(spec1_)
+            print(spec2_)
+            print(yool)
 
     # get new spec features
     spec_features = get_spec_features(spec1_,spec2_)
@@ -450,18 +438,21 @@ def create_matches_df_chunk(query_df,
                                  target_df, 
                                  precursor_thresh, 
                                  max_len, 
-                                 adduct_match, 
                                  chunk_size, 
                                  outpath, 
-                                 logpath):
+                                 logpath,
+                                 adduct_match=False):
 
     """
     writes out to folder. No other nonspec info retained
+
+    edited to also include inchiKey match as a field
     """
 
     start = time.perf_counter()
 
-    num_trues = 0
+    num_trues_core = 0
+    num_trues_key = 0
     target_df['spectrum'] = [np.array(i, dtype=np.float64) for i in target_df['spectrum']]
     query_df['spectrum'] = [np.array(i, dtype=np.float64) for i in query_df['spectrum']]
 
@@ -524,13 +515,15 @@ def create_matches_df_chunk(query_df,
         #add new columns and rename old, flush to csv
         within_range['precquery'] = [query_df.iloc[i]["precursor"] for x in range(len(within_range))]
         within_range['query'] = [query_df.iloc[i]["spectrum"] for x in range(len(within_range))]
-        within_range["match"] = query_df.iloc[i]["inchi_base"] == within_range["inchi_base"]
+        within_range["InchiCoreMatch"] = query_df.iloc[i]["inchi_base"] == within_range["inchi_base"]
+        within_range["InchiKeyMatch"] = query_df.iloc[i]["inchi"] == within_range["inchi"]
         within_range['queryID'] = query_df.iloc[i]["queryID"]
         within_range.rename(columns={"precursor": "prectarget", "inchi_base": "target_base", 'spectrum':'target'}, inplace=True)
-        within_range = within_range[['precquery','prectarget','query','target','queryID','target_base','match']]
+        within_range = within_range[['precquery','prectarget','query','target','queryID','target_base',"InchiCoreMatch","InchiKeyMatch"]]
         pieces.append(within_range)
 
-        num_trues += sum(within_range['match'])
+        num_trues_core += sum(within_range["InchiCoreMatch"])
+        num_trues_key += sum(within_range["InchiKeyMatch"])
     
         if seen_chunk >= chunk_size or seen > max_len:
 
@@ -552,6 +545,9 @@ def create_matches_df_chunk(query_df,
                     handle.write(f'total number of target spectra considered: {seen}\n')
                     handle.write(f'total inchicores seen: {len(cores_set)}\n')
                     handle.write(f'{unmatched} queries went unmatched\n')
+                    handle.write(f'num true matches core: {num_trues_core} \n')
+                    handle.write(f'num true matches key: {num_trues_key} \n')
+                    
                 return
 
     with open(logpath,'a') as handle:
@@ -564,9 +560,55 @@ def create_matches_df_chunk(query_df,
         handle.write(f'total number of target spectra considered: {seen}\n')
         handle.write(f'total inchicores seen: {len(cores_set)}\n')
         handle.write(f'{unmatched} queries went unmatched\n')
-        handle.write(f'num true matches: {num_trues} \n')
+        handle.write(f'num true matches core: {num_trues_core} \n')
+        handle.write(f'num true matches key: {num_trues_key} \n')
 
     return
+
+def create_matches_and_model_data(query,
+                                  target,
+                                   matchesOutputPath,
+                                   modelDataOutputPath,
+                                   chunk_size,
+                                   max_size,
+                                   ppm_windows,
+                                   noise_threshes,
+                                   noise_names,
+                                   centroid_tolerance_vals,
+                                   centroid_tolerance_types,
+                                   reweight_methods,
+                                   reweight_names,
+                                   sim_methods,
+                                   prec_removes,
+                                   prec_remove_names,
+                                   limit_target_cores = False,
+                                   adduct_match = False
+                                   ):
+
+    for i in ppm_windows:
+        create_matches_df_chunk(query_df = query,
+                                target_df = target,
+                                precursor_thresh = i,
+                                adduct_match = adduct_match,
+                                max_len = max_size,
+                                chunk_size= chunk_size,
+                                outpath = f'{matchesOutputPath}/{i}_ppm',
+                                logpath = f'{matchesOutputPath}/log_{i}_ppm.txt')
+
+
+        create_model_dataset_chunk(
+                                    input_path = f'{matchesOutputPath}/{i}_ppm',
+                                    output_path = f'{modelDataOutputPath}/{i}_ppm',
+                                    sim_methods = sim_methods, 
+                                    noise_threshes = noise_threshes,
+                                    noise_names = noise_names, 
+                                    centroid_tolerance_vals = centroid_tolerance_vals, 
+                                    centroid_tolerance_types = centroid_tolerance_types,
+                                    reweight_methods = reweight_methods,
+                                    reweight_names = reweight_names,
+                                    prec_removes = prec_removes,
+                                    prec_remove_names = prec_remove_names
+        )
 
 def clean_and_spec_features_single(
     spec1,
@@ -824,6 +866,7 @@ def create_model_dataset_chunk(
     output_path,
     sim_methods=None,
     noise_threshes=[0.01],
+    noise_names = ['1%'],
     centroid_tolerance_vals=[0.05],
     centroid_tolerance_types=["da"],
     reweight_methods=[None],
@@ -852,22 +895,21 @@ def create_model_dataset_chunk(
         pieces=list()
         pieces.append(matches_df.iloc[:,:2])
         # create initial value spec columns
+        init_spec_df = matches_df.apply(
+            lambda x: get_spec_features(
+                x["query"], x["target"]
+            ),
+            axis=1,
+            result_type="expand",
+        )
+
+        init_spec_df.columns = spec_columns
+        pieces.append(init_spec_df)
+        del(init_spec_df)
+        
+        ticker = 0
         for remove in range(len(prec_removes)):
-
-            init_spec_df = matches_df.apply(
-                lambda x: get_spec_features(
-                    x["query"], x["target"]
-                ),
-                axis=1,
-                result_type="expand",
-            )
-
-            init_spec_df.columns = spec_columns
-            pieces.append(init_spec_df)
-            del(init_spec_df)
-
-            ticker = 0
-            for i in noise_threshes:
+            for i in range(len(noise_threshes)):
                 for j in range(len(reweight_methods)):
                     for k in range(len(centroid_tolerance_vals)):
 
@@ -876,13 +918,13 @@ def create_model_dataset_chunk(
                             print(f"added {ticker} settings")
 
                         spec_columns_ = [
-                            f"{x}_n:{i} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
+                            f"{x}_n:{noise_names[i]} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
                             for x in spec_columns
                         ]
 
 
                         sim_columns_ = [
-                            f"{x}_n:{i} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
+                            f"{x}_n:{noise_names[i]} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
                             for x in sim_methods
                         ]
 
@@ -893,7 +935,7 @@ def create_model_dataset_chunk(
                                 x["precquery"],
                                 x["target"],
                                 x["prectarget"],
-                                noise_thresh=i,
+                                noise_thresh=noise_threshes[i],
                                 centroid_thresh=centroid_tolerance_vals[k],
                                 centroid_type=centroid_tolerance_types[k],
                                 reweight_method= reweight_methods[j],
@@ -945,26 +987,31 @@ def create_model_dataset_chunk(
                         pieces.append(sim_df)
                         
         out_df = pd.concat(pieces, axis=1)
-        out_df["match"] = matches_df["match"]
+        out_df["InchiCoreMatch"] = matches_df["InchiCoreMatch"]
+        out_df["InchiKeyMatch"] = matches_df["InchiKeyMatch"]
         out_df.to_pickle(f'{output_path}/{chunk}')
 
 
-def generate_keep_indices(noise_threshes, centroid_tolerance_vals, reweight_methods, spec_features, sim_methods, prec_removes =[True],any_=False, nonspecs=False, init_spec=False):
+def generate_keep_indices(noise_threshes,
+                         centroid_tolerance_vals, 
+                         reweight_methods, 
+                         spec_features, 
+                         sim_methods, 
+                         prec_removes =[True],
+                         any_=False, 
+                         inits=False):
 
-    if nonspecs:
-        keep_indices= list(range(13))
+    if inits:
+        keep_indices= list(range(8))
     else:
         keep_indices=list()
 
-    if init_spec:
-        keep_indices+=list(range(13,19))
-
-    ind=19
+    ind = 8
     for _ in prec_removes:
         for i in noise_threshes:
-            for j in centroid_tolerance_vals:
-                for k in reweight_methods:
-                    
+            for k in reweight_methods:
+                for j in centroid_tolerance_vals:
+                  
                     for l in spec_features:
                         if any_:
                             if True in [i,j,k,l,_]:

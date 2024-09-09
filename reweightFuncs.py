@@ -27,3 +27,13 @@ def fixed_power(x, power):
 
     return np.power(x, power)
 
+
+def noise_clip(max, perc_thresh = 0, fixed_thresh = 0):
+
+    return perc_thresh * max + fixed_thresh
+
+def affine_quad_reweight(x, intercept, x1, x2):
+
+    ent = scipy.stats.entropy(x)
+    return intercept + x1 * ent + x2 * ent**2
+

@@ -59,7 +59,7 @@ def create_model_and_ind_data(input_path, outputs_path, comparison_metrics):
             pickle.dump(ind_aucs, handle)
 
 
-def get_least_corr_and_control(dataset, num, max_combos=1e6, num_condition = 1, num_control = 1):
+def get_least_corr_and_control(dataset, num, max_combos=1e5, num_condition = 1, num_control = 1):
 
     lowest_seen = list(np.ones(num_condition))
     best_groups = list(np.zeros(num_condition))

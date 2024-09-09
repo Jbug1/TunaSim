@@ -1,4 +1,5 @@
 import numpy as np
+import tools_fast
 import scipy
 
 
@@ -42,7 +43,7 @@ def clean_spectrum(
     noise_removal: float = None,
     ms2_da: float = None,
     ms2_ppm: float = None,
-    standardize=False,
+    standardize = True,
 ) -> np.ndarray:
     """
     Clean the spectrum with the following procedures:
@@ -63,17 +64,19 @@ def clean_spectrum(
     if max_mz is not None:
         spectrum = spectrum[spectrum[:, 0] <= max_mz]
 
+    if len(spectrum) == 0:
+        return spectrum
+
     # 2. Centroid peaks
-    if ms2_da is None and ms2_ppm is None:
+    if ms2_da == 0 or ms2_ppm == 0:
         pass
     else:
-        spectrum = spectrum[np.argsort(spectrum[:, 0])]
         spectrum = centroid_spec(spectrum, ms2_da=ms2_da, ms2_ppm=ms2_ppm)
 
-    # 3. Remove noise ions
+    # 3. Remove noise ions...noise removal should now always be a function
     if noise_removal is not None and spectrum.shape[0] > 0:
         max_intensity = np.max(spectrum[:, 1])
-        spectrum = spectrum[spectrum[:, 1] >= max_intensity * noise_removal]
+        spectrum = spectrum[spectrum[:, 1] >= noise_removal(max_intensity)]
 
     # 4. Standardize the spectrum.
     if standardize:
@@ -87,6 +90,12 @@ def centroid_spec(spec, ms2_ppm=None, ms2_da=None):
     """
     If both ms2_ppm and ms2_da is defined, ms2_da will be used.
     """
+
+    try:
+        return tools_fast.centroid_spec(spec, ms2_ppm=ms2_ppm, ms2_da=ms2_da)
+    except Exception as e:
+        pass
+
     # Fast check is the spectrum need centroid.
     mz_array = spec[:, 0]
     need_centroid = 0
@@ -219,6 +228,11 @@ def match_peaks_in_spectra(spec_a, spec_b, ms2_ppm=None, ms2_da=None):
                               m/z, intensity from spec 1; intensity from spec 2.
     """
 
+    try:
+        return tools_fast.match_spectrum(spec_a, spec_b, ms2_ppm=ms2_ppm, ms2_da=ms2_da)
+    except Exception as e:
+        pass
+
     a = 0
     b = 0
 
@@ -267,6 +281,12 @@ def match_peaks_in_spectra_separate(spec_a, spec_b, ms2_ppm=None, ms2_da=None):
     :return: list. Each element in the list is a list contain three elements:
                               m/z, intensity from spec 1; intensity from spec 2.
     """
+
+    try:
+        return tools_fast.match_spectrum(spec_a, spec_b, ms2_ppm=ms2_ppm, ms2_da=ms2_da)
+    except Exception as e:
+        print('did not work')
+        return
 
     a = 0
     b = 0
