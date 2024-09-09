@@ -39,10 +39,10 @@ def standardize_spectrum(spectrum):
 def clean_spectrum(
     spectrum,
     max_mz: float = None,
-    noise_removal: float = 0.01,
-    ms2_da: float = 0.05,
+    noise_removal: float = None,
+    ms2_da: float = None,
     ms2_ppm: float = None,
-    standardize=True,
+    standardize=False,
 ) -> np.ndarray:
     """
     Clean the spectrum with the following procedures:
@@ -56,10 +56,6 @@ def clean_spectrum(
     :param ms2_ppm: The MS/MS tolerance in ppm.
     If both ms2_da and ms2_ppm is given, ms2_da will be used.
     """
-    # Check parameter
-    if ms2_da is None and ms2_ppm is None:
-        raise RuntimeError("MS2 tolerance need to be set!")
-
     if len(spectrum) == 0:
         return spectrum
 
@@ -68,8 +64,11 @@ def clean_spectrum(
         spectrum = spectrum[spectrum[:, 0] <= max_mz]
 
     # 2. Centroid peaks
-    spectrum = spectrum[np.argsort(spectrum[:, 0])]
-    spectrum = centroid_spec(spectrum, ms2_da=ms2_da, ms2_ppm=ms2_ppm)
+    if ms2_da is None and ms2_ppm is None:
+        pass
+    else:
+        spectrum = spectrum[np.argsort(spectrum[:, 0])]
+        spectrum = centroid_spec(spectrum, ms2_da=ms2_da, ms2_ppm=ms2_ppm)
 
     # 3. Remove noise ions
     if noise_removal is not None and spectrum.shape[0] > 0:
@@ -79,6 +78,7 @@ def clean_spectrum(
     # 4. Standardize the spectrum.
     if standardize:
         spectrum = standardize_spectrum(spectrum)
+
     return spectrum
 
 

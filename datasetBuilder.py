@@ -547,9 +547,6 @@ def create_matches_df_chunk(query_df,
             if seen > max_len:  
                 with open(logpath,'a') as handle:
 
-                    chunk_df = pd.concat(pieces)
-                    chunk_df.to_pickle(f'{outpath}/chunk_{chunk_counter}.pkl')
-
                     handle.write(f'matched prec thresh: {precursor_thresh}, max len:{max_len} adduct match: {adduct_match} in {time.perf_counter()-start}\n')
                     handle.write(f'total number of query spectra considered: {seen_}\n')
                     handle.write(f'total number of target spectra considered: {seen}\n')
@@ -852,8 +849,8 @@ def create_model_dataset_chunk(
             continue
 
         matches_df = pd.read_pickle(f'{input_path}/{chunk}')
-
-        out_df = None
+        pieces=list()
+        pieces.append(matches_df.iloc[:,:2])
         # create initial value spec columns
         for remove in range(len(prec_removes)):
 
@@ -866,6 +863,8 @@ def create_model_dataset_chunk(
             )
 
             init_spec_df.columns = spec_columns
+            pieces.append(init_spec_df)
+            del(init_spec_df)
 
             ticker = 0
             for i in noise_threshes:
@@ -910,6 +909,7 @@ def create_model_dataset_chunk(
                             spec_columns_  + ["query", "target"]
                         )
 
+                        pieces.append(cleaned_df.iloc[:,:-2])
                         
                         # create columns of similarity scores
                         if centroid_tolerance_types[k] == "ppm":
@@ -926,8 +926,6 @@ def create_model_dataset_chunk(
                                 result_type="expand",
                             )
 
-                            sim_df.columns = sim_columns_
-
                         else:
                             
                             sim_df = cleaned_df.apply(
@@ -943,32 +941,10 @@ def create_model_dataset_chunk(
                                 result_type="expand",
                             )
                             
-                            sim_df.columns = sim_columns_
-
-                        # add everything to the output df
-                        if out_df is None:
-
-                            out_df = pd.concat(
-                                (
-                                    matches_df.iloc[:, :2],
-                                    init_spec_df,
-                                    cleaned_df.iloc[:, :-2],
-                                    sim_df,
-                                ),
-                                axis=1,
-                            )
-
-                        else:
-
-                            out_df = pd.concat(
-                                (
-                                    out_df,
-                                    cleaned_df.iloc[:, :-2],
-                                    sim_df,
-                                ),
-                                axis=1,
-                            )
-
+                        sim_df.columns = sim_columns_
+                        pieces.append(sim_df)
+                        
+        out_df = pd.concat(pieces, axis=1)
         out_df["match"] = matches_df["match"]
         out_df.to_pickle(f'{output_path}/{chunk}')
 
