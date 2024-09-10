@@ -6,10 +6,6 @@ from scipy import stats
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
 
-def sigmoid(z):
-    return 1/(1 + np.exp(-z))
-
-
 
 def middle(element,lower,upper):
     """ 

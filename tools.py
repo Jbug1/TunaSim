@@ -414,11 +414,12 @@ def weight_intensity(x, reweight_method):
     """
     flexible version of weight_intensity function
     """
-    if len(x) ==0 or np.sum(x) == 0 or reweight_method is None:
+    if len(x) == 0:
         return x
     
     return reweight_method(x)
 
 
 
-
+def sigmoid(z):
+    return 1/(1 + np.exp(-z))
