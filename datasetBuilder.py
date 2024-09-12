@@ -122,7 +122,6 @@ def clean_and_spec_features(
     centroid_type="ppm",
     reweight_method=1,
     prec_remove=None,
-    original_order=False
 ):
     """
     Function to clean the query and target specs according to parameters passed. Returns only matched spec
@@ -142,7 +141,7 @@ def clean_and_spec_features(
             noise_threshold = noise_thresh,
             ms2_ppm = centroid_thresh,
             standardize = False,
-            max_mz=prec_remove(prec1),
+            max_mz=prec_remove(prec2),
         )
     else:
         spec1_ = tools.clean_spectrum(
@@ -157,7 +156,7 @@ def clean_and_spec_features(
             noise_removal = noise_thresh,
             ms2_da = centroid_thresh,
             standardize = False,
-            max_mz=prec_remove(prec1),
+            max_mz=prec_remove(prec2),
         )
 
     # reweight by given reweight_method
@@ -347,6 +346,7 @@ def create_matches_and_model_data(query,
         create_model_dataset_chunk(
                                     input_path = f'{matchesOutputPath}/{i}_ppm',
                                     output_path = f'{modelDataOutputPath}/{i}_ppm',
+                                    logpath = f'{modelDataOutputPath}/{i}_ppm/log.txt',
                                     sim_methods = sim_methods, 
                                     noise_threshes = noise_threshes,
                                     noise_names = noise_names, 
@@ -362,6 +362,7 @@ def create_matches_and_model_data(query,
 def create_model_dataset_chunk(
     input_path,
     output_path,
+    logpath,
     sim_methods=None,
     noise_threshes=[0.01],
     noise_names = ['1%'],
@@ -371,9 +372,10 @@ def create_model_dataset_chunk(
     reweight_names = ['none'],
     prec_removes=[None],
     prec_remove_names = ['none'],
-    original_order=False
 ):
     """ """
+
+    start = time.perf_counter()
     # create helper vars
     spec_columns = [
         "ent_query",
@@ -409,10 +411,6 @@ def create_model_dataset_chunk(
             for i in range(len(noise_threshes)):
                 for j in range(len(reweight_methods)):
                     for k in range(len(centroid_tolerance_vals)):
-
-                        ticker += 1
-                        if ticker % 10 == 0:
-                            print(f"added {ticker} settings")
 
                         spec_columns_ = [
                             f"{x}_n:{noise_names[i]} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
@@ -456,8 +454,7 @@ def create_model_dataset_chunk(
                                     x["query"],
                                     x["target"],
                                     sim_methods,
-                                    ms2_ppm = centroid_tolerance_vals[k],
-                                    reweight_method = reweight_methods[j]
+                                    ms2_ppm = centroid_tolerance_vals[k]
                                 ),
                                 axis=1,
                                 result_type="expand",
@@ -470,8 +467,7 @@ def create_model_dataset_chunk(
                                     x["query"],
                                     x["target"],
                                     sim_methods,
-                                    ms2_da = centroid_tolerance_vals[k],
-                                    reweight_method = reweight_methods[j]
+                                    ms2_da = centroid_tolerance_vals[k]
                                 ),
                                 axis=1,
                                 result_type="expand",
@@ -479,6 +475,13 @@ def create_model_dataset_chunk(
                             
                         sim_df.columns = sim_columns_
                         pieces.append(sim_df)
+
+                        ticker += 1
+                        if ticker % 10 == 0:
+                            with open(logpath,'w') as handle:
+
+                                handle.write(f"added {ticker} settings in {time.perf_counter() - start}\n")
+                                start = time.perf_counter()
                         
         out_df = pd.concat(pieces, axis=1)
         out_df["InchiCoreMatch"] = matches_df["InchiCoreMatch"]

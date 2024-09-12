@@ -285,8 +285,7 @@ def match_peaks_in_spectra_separate(spec_a, spec_b, ms2_ppm=None, ms2_da=None):
     try:
         return tools_fast.match_spectrum(spec_a, spec_b, ms2_ppm=ms2_ppm, ms2_da=ms2_da)
     except Exception as e:
-        print('did not work')
-        return
+        pass
 
     a = 0
     b = 0

@@ -624,6 +624,17 @@ def sigmoid_distance(p, q):
         1 - pk([lim_1], [lim_2], metric="sigmoid")[0][0]
     )
 
+def sigmoid_unnorm_distance(p, q):
+    """
+    flexible norm constant implemented
+    lim_1 and lim_2 will be passed thru kernel function to get max distance for this length
+    In the case that the length in common is 0, return 1 for distance
+    """
+
+    if len(p) == 0:
+        return 1
+
+    return (1 - pk([p], [q], metric="sigmoid")[0][0]) 
 
 def cosine_kernel_distance(p, q):
     "max is always 1, no need for normalization constant"
@@ -649,10 +660,19 @@ def laplacian_distance(p, q):
         lim_2[1] += 1
     except:
         pass
-
+    
+    
     return (1 - pk([p], [q], metric="laplacian")[0][0]) / (
         1 - pk([lim_1], [lim_2], metric="laplacian")[0][0]
     )
+
+def laplacian_unnorm_distance(p,q):
+    
+    if len(p) == 0:
+        return 1
+    
+    return (1 - pk([p], [q], metric="laplacian")[0][0])
+
 
 
 def cosine_kernel_distance(p, q):
@@ -705,11 +725,7 @@ def rbf_distance(p, q):
     return (1 - pk([p], [q], metric="rbf")[0][0]) / (
         1 - pk([lim_1], [lim_2], metric="rbf")[0][0]
     )
-    # except:
-    #     print("failed rbf")
-    #     print(p)
-    #     print(q)
-    #     return 1
+  
 
 
 def chi2_distance(p, q):

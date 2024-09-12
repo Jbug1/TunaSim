@@ -2,8 +2,8 @@
 import numpy as np
 import scipy
 
-def logent(x, min_logent, base):
-    power = max(min_logent,np.emath.logn(base,scipy.stats.entropy(x)))
+def logent(x, intercept = 0, base = 2):
+    power = intercept + np.emath.logn(base,scipy.stats.entropy(x))
     x = np.power(x, power)
     x = x / np.sum(x)
     return x
@@ -35,5 +35,5 @@ def noise_clip(max, perc_thresh = 0, fixed_thresh = 0):
 def affine_quad_reweight(x, intercept, x1, x2):
 
     ent = scipy.stats.entropy(x)
-    return intercept + x1 * ent + x2 * ent**2
+    return max(0,intercept + x1 * ent + x2 * ent**2)
 
