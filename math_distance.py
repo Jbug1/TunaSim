@@ -661,10 +661,11 @@ def laplacian_distance(p, q):
     except:
         pass
     
-    
+  
     return (1 - pk([p], [q], metric="laplacian")[0][0]) / (
         1 - pk([lim_1], [lim_2], metric="laplacian")[0][0]
     )
+   
 
 def laplacian_unnorm_distance(p,q):
     

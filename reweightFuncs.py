@@ -2,10 +2,12 @@
 import numpy as np
 import scipy
 
-def logent(x, intercept = 0, base = 2):
-    power = intercept + np.emath.logn(base,scipy.stats.entropy(x))
-    x = np.power(x, power)
-    x = x / np.sum(x)
+def logent(x, intercept = 0, base = np.e):
+    
+    if np.sum(x) > 0:
+        power = intercept + np.emath.logn(base,1+scipy.stats.entropy(x))
+        x = np.power(x, power)
+        x = x / np.sum(x)
     return x
 
 def weight_intensity_by_entropy(x, WEIGHT_START = 0.25, ENTROPY_CUTOFF = 3, MAX_WEIGHT=1):

@@ -317,6 +317,50 @@ def orig_metric_to_df(metrics, test_data, unnnormalized=False):
         return (pd.DataFrame(out, columns=['metric','AUC']),raw_sims, unnorm_dists)
     else:
         return (pd.DataFrame(out, columns=['metric','AUC']),raw_sims)
+    
+def train_and_name_models(train, models, indices, logpath):
+
+    trained_models = dict()
+    trained=0
+    for key, value in indices.items():
+
+        sub = train.iloc[:,value]
+        models_ = copy.deepcopy(models)
+
+        for i in range(len(models_)):
+
+            models_[i].fit(sub,train['match'])
+            trained_models[f'{key}_{i}'] = models_[i]
+
+    trained += 1
+    if trained % 100 == 0:
+
+        with open(logpath,'w') as handle:
+            handle.write(f'finished {trained} settings')   
+
+    return trained_models
+
+def evaluate_models_by_subset(models, indices, eval_data, logpath):
+
+    model_aucs = list()
+    model_names = sorted(list(models.keys()))
+    evaluated = 0
+    for name in model_names:
+
+        subset_name = name.split('_')[0]
+
+        sub = eval_data.iloc[:,indices[subset_name]]
+        model = models[name]
+        pos_ind = np.where(model.classes_==1)[0][0]
+        model_aucs.append(auc(eval_data['match'],model.predict_proba(sub)[:,pos_ind]))
+
+    evaluated+=1
+    if evaluated % 100 == 0:
+
+        with open(logpath,'w') as handle:
+            handle.write(f'finished {evaluated} settings') 
+
+    return model_aucs
 
 
 #table other solvers for now
