@@ -328,7 +328,6 @@ def create_matches_and_model_data(query,
                                    sim_methods,
                                    prec_removes,
                                    prec_remove_names,
-                                   limit_target_cores = False,
                                    adduct_match = False
                                    ):
 
@@ -480,7 +479,7 @@ def create_model_dataset_chunk(
                         if ticker % 10 == 0:
                             with open(logpath,'w') as handle:
 
-                                handle.write(f"added {ticker} settings in {time.perf_counter() - start}\n")
+                                handle.write(f"added {ticker} settings in {round(time.perf_counter() - start,2)}\n")
                                 start = time.perf_counter()
                         
         out_df = pd.concat(pieces, axis=1)
