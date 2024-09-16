@@ -284,7 +284,7 @@ def train_and_name_models(train, models, indices, logpath):
         for i in range(len(models_)):
 
             models_[i].fit(sub,train['match'])
-            trained_models[f'{key}_{i}'] = models_[i]
+            trained_models[f'{key}__{i}'] = models_[i]
 
     trained += 1
     if trained % 100 == 0:
@@ -301,7 +301,7 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
     evaluated = 0
     for name in model_names:
 
-        subset_name = name.split('_')[0]
+        subset_name = name.split('__')[0]
 
         sub = eval_data.iloc[:,indices[subset_name]]
         model = models[name]
