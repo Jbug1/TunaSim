@@ -13,17 +13,15 @@ import pickle
 from bisect import bisect_left
 
 
-def get_least_corr_and_control(dataset, num, max_combos=1e5, num_condition = 1, num_control = 1):
+def get_least_corr_and_control(corrs, num, max_combos=1e5, num_condition = 1, num_control = 1):
 
     lowest_seen = list(np.ones(num_condition))
     best_groups = list(np.zeros(num_condition))
 
-    corrs = dataset.corr()
-
     #create helper variable so that we dont try more than max combos
     _=0
     #choose every combo for given number
-    for combo in itertools.combinations(range(len(dataset.columns)),r=num):
+    for combo in itertools.combinations(range(corrs.shape[1]),r=num):
 
         corr = 0
         for i in combo:
@@ -46,7 +44,7 @@ def get_least_corr_and_control(dataset, num, max_combos=1e5, num_condition = 1, 
         if _  == max_combos:
             break
 
-    rand_control = [np.random.choice(list(range(dataset.shape[1])),replace=False,size=num) for i in range(num_control)]
+    rand_control = [np.random.choice(list(range(corrs.shape[1])),replace=False,size=num) for i in range(num_control)]
     control_corrs = np.zeros(num_control)
     for _ in range(num_control):
         corr=0
@@ -332,3 +330,53 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
 #                                             params = params_,
 #                                             solver = solver,
 #                 ))
+
+
+def corr_data(order, indices, corr_df):
+
+    mins = list()
+    means = list()
+
+    for name in order:
+
+        min_seen = 1
+        running_sum = 0
+        for i in indices[name]:
+            for j in indices[name]:
+
+                if i>j:
+
+                    ij_corr = corr_df.iloc[i,j]
+
+                    if ij_corr < min_seen:
+                        min_seen = ij_corr
+
+                    running_sum += ij_corr
+
+        mins.append(min_seen)
+        means.append(running_sum/len(indices[name]))
+
+    return (mins, means)
+
+
+def auc_data(order, indices, aucs_array):
+
+    maxes = list()
+    means = list()
+
+    for name in order:
+
+        max_seen = 0
+        running_sum = 0
+        for j in indices[name]:
+
+            if aucs_array[j] > max_seen:
+                max_seen = aucs_array[j]
+            running_sum+=aucs_array[j]
+
+        maxes.append(max_seen)
+        means.append(running_sum/len(indices[name]))
+
+    return (maxes, means)
+
+            
