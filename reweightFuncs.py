@@ -27,12 +27,13 @@ def weight_intensity_by_entropy(x, WEIGHT_START = 0.25, ENTROPY_CUTOFF = 3, MAX_
 
 def fixed_power(x, power):
 
-    return np.power(x, power)
+    x = np.power(x, power)
+    return x / np.sum(x)
 
 
-def noise_clip(max, perc_thresh = 0, fixed_thresh = 0):
+def noise_clip(max_peak, perc_thresh = 0, fixed_thresh = 0):
 
-    return perc_thresh * max + fixed_thresh
+    return perc_thresh * max_peak + fixed_thresh
 
 def affine_quad_reweight(x, intercept, x1, x2):
 

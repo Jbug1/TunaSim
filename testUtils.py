@@ -284,11 +284,11 @@ def train_and_name_models(train, models, indices, logpath):
             models_[i].fit(sub,train['match'])
             trained_models[f'{key}__{i}'] = models_[i]
 
-    trained += 1
-    if trained % 100 == 0:
+        trained += 1
+        if trained % 100 == 0:
 
-        with open(logpath,'w') as handle:
-            handle.write(f'finished {trained} settings\n')   
+            with open(logpath,'w') as handle:
+                handle.write(f'finished {trained} models\n')   
 
     return trained_models
 
@@ -306,11 +306,11 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
         pos_ind = np.where(model.classes_==1)[0][0]
         model_aucs.append(auc(eval_data['match'],model.predict_proba(sub)[:,pos_ind]))
 
-    evaluated+=1
-    if evaluated % 100 == 0:
+        evaluated+=1
+        if evaluated % 100 == 0:
 
-        with open(logpath,'w') as handle:
-            handle.write(f'finished {evaluated} settings\n') 
+            with open(logpath,'w') as handle:
+                handle.write(f'finished {evaluated} models\n') 
 
     return model_aucs
 

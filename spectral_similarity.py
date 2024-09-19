@@ -9,52 +9,16 @@ def distance(
 ) -> float:
     """
     """
-
-    # Calculate similarity
-
-    if "reverse" in method:
-        dist = math_distance.reverse_distance(
-            spec_matched[:, 1],
-            spec_matched[:, 2],
-            metric="_".join(method.split("_")[1:]),
-        )
-
-    elif "max" in method:
-        dist = math_distance.max_distance(
-            spec_matched[:, 1],
-            spec_matched[:, 2],
-            metric="_".join(method.split("_")[1:]),
-        )
-
-    elif "min" in method and method != "minkowski":
-
-        dist = math_distance.min_distance(
-            spec_matched[:, 1],
-            spec_matched[:, 2],
-            metric="_".join(method.split("_")[1:]),
-        )
-
-    elif "ave" in method:
-
-        dist = math_distance.ave_distance(
-            spec_matched[:, 1],
-            spec_matched[:, 2],
-            metric="_".join(method.split("_")[1:]),
-        )
+    function_name = method + "_distance"
+    if hasattr(math_distance, function_name):
+        f = getattr(math_distance, function_name)
+        dist = f(spec_matched[:, 1], spec_matched[:, 2])
 
     else:
-        function_name = method + "_distance"
-        if hasattr(math_distance, function_name):
-            f = getattr(math_distance, function_name)
-            dist = f(spec_matched[:, 1], spec_matched[:, 2])
-
-        else:
-            raise RuntimeError("Method name: {} error!".format(method))
+        raise RuntimeError("Method name: {} error!".format(method))
 
     # Normalize result
     return tools.sigmoid(dist)
-
-    return dist
 
 
 def multiple_similarity(

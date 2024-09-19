@@ -137,7 +137,7 @@ def kl_distance(p, q):
 
 def cross_ent_distance(p, q):
 
-    return (cross_entropy(p, q) + cross_entropy(q, p))/2
+    return max(cross_entropy(p, q), cross_entropy(q, p))
 
 def proportional_cross_ent_distance(p, q):
 

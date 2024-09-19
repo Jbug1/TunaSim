@@ -422,3 +422,5 @@ def weight_intensity(x, reweight_method):
 
 def sigmoid(z):
     return 1/(1 + np.exp(-z))
+
+
