@@ -10,6 +10,119 @@ import os
 from sklearn import base
 
 
+def create_variable_comparisons_chunk(noise_threshes, 
+                                      centroid_threshes,
+                                      centroid_types,
+                                      reweight_names, 
+                                      reweight_funcs, 
+                                      sim_methods, 
+                                      prec_funcs,
+                                      prec_names,
+                                      matches_folder, 
+                                      top_hit_only,  
+                                      match_field,
+                                      outpath,
+                                      logpath):
+    
+
+    sims_dict = dict()
+    for i in sim_methods:
+        sims_dict[i]=[list(),list()]
+
+    for j in noise_threshes:
+        for k in range(len(centroid_threshes)):
+            for l in range(len(reweight_names)):
+                for m in range(len(prec_funcs)):
+
+                    start = time.perf_counter()
+                    
+                    cleandrop_rows = 0
+                    cleandrop_cores = 0
+                    for match in os.listdir(matches_folder):
+
+                        if match[-3:] != 'pkl' or 'similarities' in match:
+                            continue
+
+                        #read pickled match df
+                        matches = pd.read_pickle(f'{matches_folder}/{match}')
+                        labels = matches[match_field].to_numpy()
+                        cleaned = matches.apply(lambda x: datasetBuilder.clean_and_spec_features(x['query'],
+                                                                                                    x['precquery'],
+                                                                                                    x['target'],
+                                                                                                    x['prectarget'],
+                                                                                                    noise_thresh=j,
+                                                                                                    centroid_thresh = centroid_threshes[k],
+                                                                                                    centroid_type=centroid_types[k],
+                                                                                                    reweight_method = reweight_funcs[l],
+                                                                                                    prec_remove=prec_funcs[m]
+                                                                                                    ), 
+                                                                                                    axis=1,
+                                                                                                    result_type='expand')
+                        
+                        
+                        cleaned = cleaned.iloc[:,-2:]
+                        cleaned.columns= ['query','target']
+                        cleaned['match'] = labels
+                        cleaned.insert(0,'target_base', matches['target_base'].tolist())
+                        cleaned.insert(0,'queryID', matches['queryID'].tolist())
+                        cleaned.reset_index(drop=True, inplace=True)
+
+                        del(matches)
+
+                        ids_set = set(cleaned['queryID'])
+
+                        #make sure that length of specs is not 0 after cleaning process
+                        zerolen_indices = list()
+                        for i in range(len(cleaned)):
+                            if len(cleaned.iloc[i]['query'])==0 or len(cleaned.iloc[i]['target'])==0:
+                                zerolen_indices.append(i)
+
+                        #drop zero length entries
+                        cleaned.drop(zerolen_indices, inplace=True)
+                        cleandrop_cores += len(ids_set - set(cleaned['queryID']))
+                        cleandrop_rows += len(zerolen_indices)
+
+
+                        #gather all similarities                              
+                        sims = run_metrics_sims(sim_methods,cleaned, tol_thresh = centroid_threshes[k], tol_type=centroid_types[k])
+                        sims.insert(0,'target_base',cleaned['target_base'].tolist())
+                        sims.insert(0,'queryID',cleaned['queryID'].tolist())
+                        sims['match'] = cleaned['match']
+
+                        del(cleaned)
+
+                        #run sims to auc one at a time
+                        for col in sims.columns[2:-1]:
+                            if top_hit_only:
+                                temp = sims.loc[sims.groupby(by=['queryID','target_base'])[col].idxmax()]
+                                sims_dict[col][0]=sims_dict[col][0]+temp[col].tolist()
+                                sims_dict[col][1]=sims_dict[col][1]+temp['match'].tolist()
+                                del(temp)
+
+                            else:
+                                sims_dict[col][0]=sims_dict[col][0]+sims[col].tolist()
+                                sims_dict[col][1]=sims_dict[col][1]+sims['match'].tolist()
+
+                    for key, value in sims_dict.items():
+
+                        auc_ = round(auc(value[1], value[0]),5)
+                        clean_specs =  f'n:{j}, c:{centroid_threshes[k]}{centroid_types[k]}, p:{reweight_names[l]}, pr:{prec_names[m]} {key}:'
+                        with open(outpath,'a') as handle:
+                            handle.write(f'{clean_specs}: {auc_}\n')
+
+                    #reset sims dict
+                    sims_dict = dict()
+                    for i in sim_methods:
+                        sims_dict[i]=[list(),list()]
+
+                    with open(logpath, 'a') as handle:
+                        handle.write(f'completed n:{j}, c:{centroid_threshes[k]}{centroid_types[k]}, p:{reweight_names[l]}, pr:{prec_names[m]} in {time.perf_counter()-start}\n')
+                        handle.write(f'dropped {cleandrop_cores} cores as a result of cleaning\n')
+                        handle.write(f'dropped {cleandrop_rows} rows as a result of cleaning\n')
+                        start = time.perf_counter()
+
+
+
 def roc_curves_models(preds, trues):
     
     #get total true and false
@@ -219,90 +332,17 @@ def create_variable_comparisons(noise_threshes, centroid_threshes, centroid_type
                     except:
                         print(f'error on n:{j}, c:{centroid_threshes[k]}{centroid_types[k]}, p:{l}, pr:{m}')
 
-def create_variable_comparisons_chunk(noise_threshes, centroid_threshes, centroid_types, powers, sim_methods, prec_removes, matches_folder, top_hit_only, outpath, original_order=True):
-
-    sims_big = None
-    for j in noise_threshes:
-        for k in range(len(centroid_threshes)):
-            for l in powers:
-                for m in prec_removes:
-
-                    count=1
-                    match_labels=np.array([])
-                    
-                    for match in os.listdir(matches_folder):
-
-                        if match[-3:] != 'pkl' or 'similarities' in match:
-                            continue
-
-                        #read pickled match df
-                        matches = pd.read_pickle(f'{matches_folder}/{match}')
-                        cleaned = matches.apply(lambda x: datasetBuilder.clean_and_spec_features(x['query'],
-                                                                                                    x['precquery'],
-                                                                                                    x['target'],
-                                                                                                    x['prectarget'],
-                                                                                                    noise_thresh=j,
-                                                                                                    centroid_thresh = centroid_threshes[k],
-                                                                                                    centroid_type=centroid_types[k],
-                                                                                                    reweight_method=l,
-                                                                                                    prec_remove=m,
-                                                                                                    original_order=original_order
-                                                                                                    ), 
-                                                                                                    axis=1,
-                                                                                                    result_type='expand')
-                        
-                        
-                        match_labels = np.concatenate((match_labels,matches.iloc[:,-1].to_numpy()))
-                        query_ids=matches['query_spec_ID'].tolist()
-                        target_ids=matches['target_spec_ID'].tolist()
-                        del(matches)
-                        cleaned = cleaned.iloc[:,-2:]
-                        cleaned.columns= ['query','library']
-
-                        #gather all similarities                        
-                        sims = run_metrics_sims(sim_methods,cleaned, tol_thresh = centroid_threshes[k], tol_type=centroid_types[k], original_order=original_order, reweight_method=l)
-                        sims.insert(0,'query_spec_ID',query_ids)
-                        sims.insert(1,'target_spec_ID',target_ids)
-                        del(cleaned)
-                        del(query_ids)
-                        del(target_ids)
-
-                        if sims_big is None:
-                            sims_big=sims.copy()
-                        else:
-                            sims_big = pd.concat([sims_big,sims])
-
-                        del(sims)
-                        print(f'added {count} n:{j}, c:{centroid_threshes[k]}{centroid_types[k]}, p:{l}, pr:{m}')
-                        count+=1
-
-                    sims_big.to_pickle(f'{matches_folder}/similarities_{j}_{centroid_threshes[k]}_{centroid_types[k]}_{l}_{m}.pkl')
-                    aucs = sims_to_auc(sims_big, match_labels, top_hit_only)
-                    sims_big=None
-                    aucs['clean_specs'] =  f'n:{j}, c:{centroid_threshes[k]}{centroid_types[k]}, p:{l}, pr:{m}'
-                    aucs.to_csv(outpath, mode='a', header=False)
-                    print('added to csv')
 
 
-def run_metrics_sims(metrics, test, tol_thresh, tol_type, original_order=False, reweight_method=None):
+def run_metrics_sims(metrics, test, tol_thresh, tol_type):
     """
     create sims for all metrics
     """
 
-    #make sure we have valid metric subset to look at
-    if metrics is None:
-        metrics=list()
-        for i in spectral_similarity.methods_range:
-            metrics.append(i)
-            metrics.append('max_'+i)
-           
-        metrics.append('reverse_dot_product')
-        metrics.remove('max_jensenshannon')
-
     if tol_type == 'da':
-        sims = test.apply(lambda x: spectral_similarity.multiple_similarity(x['query'],x['library'],methods =metrics, ms2_da = tol_thresh,reweight_spectra=original_order, reweight_method=reweight_method), axis=1, result_type='expand')
+        sims = test.apply(lambda x: spectral_similarity.multiple_similarity(x['query'],x['target'],methods =metrics, ms2_da = tol_thresh), axis=1, result_type='expand')
     else:
-        sims = test.apply(lambda x: spectral_similarity.multiple_similarity(x['query'],x['library'],methods =metrics, ms2_ppm = tol_thresh, reweight_spectra=original_order,reweight_method=reweight_method), axis=1, result_type='expand')
+        sims = test.apply(lambda x: spectral_similarity.multiple_similarity(x['query'],x['target'],methods =metrics, ms2_ppm = tol_thresh), axis=1, result_type='expand')
 
     return sims
 

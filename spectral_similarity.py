@@ -25,8 +25,8 @@ def multiple_similarity(
     spectrum_query,
     spectrum_library,
     methods,
-    ms2_ppm,
-    ms2_da
+    ms2_ppm = None,
+    ms2_da = None
 ):
     """
 

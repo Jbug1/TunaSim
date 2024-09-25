@@ -387,6 +387,7 @@ def match_peaks_with_mz_info_in_spectra(spec_a, spec_b, ms2_ppm=None, ms2_da=Non
 
 
 def normalize_distance(dist, dist_range):
+    
     if dist_range[1] == np.inf:
         if dist_range[0] == 0:
             result = 1 - 1 / (1 + dist)
