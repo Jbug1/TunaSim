@@ -341,8 +341,9 @@ def corr_data(order, indices, corr_df):
 
         min_seen = 1
         running_sum = 0
-        for i in indices[name]:
-            for j in indices[name]:
+        total_corrs = 0
+        for i in indices[name.split('__')[0]]:
+            for j in indices[name.split('__')[0]]:
 
                 if i>j:
 
@@ -352,9 +353,10 @@ def corr_data(order, indices, corr_df):
                         min_seen = ij_corr
 
                     running_sum += ij_corr
+                    total_corrs+=1
 
         mins.append(min_seen)
-        means.append(running_sum/len(indices[name]))
+        means.append(running_sum/total_corrs)
 
     return (mins, means)
 
@@ -368,14 +370,14 @@ def auc_data(order, indices, aucs_array):
 
         max_seen = 0
         running_sum = 0
-        for j in indices[name]:
+        for j in indices[name.split('__')[0]]:
 
             if aucs_array[j] > max_seen:
                 max_seen = aucs_array[j]
             running_sum+=aucs_array[j]
 
         maxes.append(max_seen)
-        means.append(running_sum/len(indices[name]))
+        means.append(running_sum/len(indices[name.split('__')[0]]))
 
     return (maxes, means)
 
