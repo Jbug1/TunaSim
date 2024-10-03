@@ -40,6 +40,7 @@ def standardize_spectrum(spectrum):
 def clean_spectrum(
     spectrum,
     max_mz: float = None,
+    min_mz: float = None,
     noise_removal: float = None,
     ms2_da: float = None,
     ms2_ppm: float = None,
@@ -63,6 +64,9 @@ def clean_spectrum(
     # 1. Remove the precursor ions
     if max_mz is not None:
         spectrum = spectrum[spectrum[:, 0] <= max_mz]
+
+    if min_mz is not None:
+        spectrum = spectrum[spectrum[:, 0] >= min_mz]
 
     if len(spectrum) == 0:
         return spectrum

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from functools import partial
+import tools
 from scipy import stats
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
@@ -853,3 +854,26 @@ def tuna_plus_distance(query,
     interactions = y*merged_ent*norm_ent + z*merged_ent*len_merged 
 
     return ind_terms + interactions
+
+
+def tuna_distance(query,
+                  target,
+                  query_mzs = None,
+                  target_mzs = None,
+                  cleaning_params = None,
+                  reweighting_params = None,
+                  matching_params = None,
+                  NL_params = None,
+                  add_params = None,
+                  mult_params = None,
+                  dif_params = None,
+                  normalize_params = None
+                  ):
+    
+    terms = np.zeros(6)
+
+    if dif_params[0] != 0:
+
+        terms[0] += dif_params[1] + dif_params[2] * (query - target) ** dif_params[3]
+        
+    return sum(terms)

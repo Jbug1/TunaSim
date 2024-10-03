@@ -13,10 +13,12 @@ import pickle
 from bisect import bisect_left
 
 
-def get_least_corr_and_control(corrs, num, max_combos=1e5, num_condition = 1, num_control = 1):
+def get_corr_and_control(corrs, num, max_combos=1e6, num_condition = 1, num_control = 1):
 
     lowest_seen = list(np.ones(num_condition))
-    best_groups = list(np.zeros(num_condition))
+    highest_seen = list(np.ones(num_condition))
+    lowest_groups = list(np.zeros(num_condition))
+    highest_groups = list(np.zeros(num_condition))
 
     #create helper variable so that we dont try more than max combos
     _=0
@@ -34,11 +36,20 @@ def get_least_corr_and_control(corrs, num, max_combos=1e5, num_condition = 1, nu
         if corr < lowest_seen[-1]:
             ind = bisect_left(lowest_seen, corr)
             lowest_seen.insert(ind, corr)
-            best_groups.insert(ind, combo)
+            lowest_groups.insert(ind, combo)
 
             #keep only the best n
             lowest_seen = lowest_seen[:num_condition]
-            best_groups = best_groups[:num_condition]
+            lowest_groups = lowest_groups[:num_condition]
+
+        if corr*-1 < highest_seen[-1]:
+            ind = bisect_left(highest_seen, corr)
+            highest_seen.insert(ind, corr)
+            highest_groups.insert(ind, combo)
+
+            #keep only the best n
+            highest_seen = highest_seen[:num_condition]
+            highest_groups = highest_groups[:num_condition]
 
         _+=1
         if _  == max_combos:
@@ -55,7 +66,9 @@ def get_least_corr_and_control(corrs, num, max_combos=1e5, num_condition = 1, nu
 
         control_corrs[_]=corr
 
-    return((np.array(best_groups),lowest_seen),(np.array(rand_control),control_corrs))
+    #flip highest seen back to positives
+    highest_seen = [-1 * _ for _ in highest_seen]
+    return((np.array(lowest_groups),lowest_seen),(np.array(rand_control),control_corrs),(np.array(highest_groups), highest_seen))
                     
 
 def dict_combine(dict1,dict2):
@@ -297,6 +310,9 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
     model_aucs = list()
     model_names = sorted(list(models.keys()))
     evaluated = 0
+
+    #create separate df with grouping info and labels
+    groups_and_labels = eval_data[:,-3:]
     for name in model_names:
 
         subset_name = name.split('__')[0]
@@ -304,7 +320,11 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
         sub = eval_data.iloc[:,indices[subset_name]]
         model = models[name]
         pos_ind = np.where(model.classes_==1)[0][0]
-        model_aucs.append(auc(eval_data['match'],model.predict_proba(sub)[:,pos_ind]))
+
+        groups_and_labels['sims'] = model.predict_proba(sub)[:,pos_ind]
+        temp = groups_and_labels.loc[groups_and_labels.groupby(by=['queryID','target_base'])['sims'].idxmax()]
+
+        model_aucs.append(auc(temp['match'],temp['sims']))
 
         evaluated+=1
         if evaluated % 100 == 0:
