@@ -301,7 +301,7 @@ def train_and_name_models(train, models, indices, logpath):
         if trained % 100 == 0:
 
             with open(logpath,'w') as handle:
-                handle.write(f'finished {trained} models\n')   
+                handle.write(f'finished {trained} models \n')   
 
     return trained_models
 
@@ -312,7 +312,7 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
     evaluated = 0
 
     #create separate df with grouping info and labels
-    groups_and_labels = eval_data[:,-3:]
+    groups_and_labels = eval_data.iloc[:,-3:]
     for name in model_names:
 
         subset_name = name.split('__')[0]
@@ -330,7 +330,7 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
         if evaluated % 100 == 0:
 
             with open(logpath,'w') as handle:
-                handle.write(f'finished {evaluated} models\n') 
+                handle.write(f'finished {evaluated} models \n') 
 
     return model_aucs
 
