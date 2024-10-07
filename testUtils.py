@@ -300,7 +300,7 @@ def train_and_name_models(train, models, indices, logpath):
         trained += 1
         if trained % 100 == 0:
 
-            with open(logpath,'w') as handle:
+            with open(logpath,'a') as handle:
                 handle.write(f'finished {trained} models \n')   
 
     return trained_models
@@ -329,7 +329,7 @@ def evaluate_models_by_subset(models, indices, eval_data, logpath):
         evaluated+=1
         if evaluated % 100 == 0:
 
-            with open(logpath,'w') as handle:
+            with open(logpath,'a') as handle:
                 handle.write(f'finished {evaluated} models \n') 
 
     return model_aucs
