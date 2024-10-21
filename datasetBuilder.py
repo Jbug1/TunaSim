@@ -119,8 +119,8 @@ def clean_and_spec_features(
     prec2,
     noise_thresh,
     centroid_thresh,
-    centroid_type="ppm",
-    reweight_method=1,
+    centroid_type="da",
+    reweight_method=None,
     prec_remove=None,
 ):
     """
@@ -133,14 +133,12 @@ def clean_and_spec_features(
             spec1,
             noise_removal = noise_thresh,
             ms2_ppm = centroid_thresh,
-            standardize = False,
             max_mz=prec_remove(prec1),
         )
         spec2_ = tools.clean_spectrum(
             spec2,
             noise_threshold = noise_thresh,
             ms2_ppm = centroid_thresh,
-            standardize = False,
             max_mz=prec_remove(prec2),
         )
     else:
@@ -148,14 +146,12 @@ def clean_and_spec_features(
             spec1,
             noise_removal = noise_thresh,
             ms2_da = centroid_thresh,
-            standardize = False,
             max_mz=prec_remove(prec1),
         )
         spec2_ = tools.clean_spectrum(
             spec2,
             noise_removal = noise_thresh,
             ms2_da = centroid_thresh,
-            standardize = False,
             max_mz=prec_remove(prec2),
         )
 
@@ -393,6 +389,7 @@ def create_model_dataset_chunk(
         matches_df = pd.read_pickle(f'{input_path}/{chunk}')
         pieces=list()
         pieces.append(matches_df.iloc[:,:2])
+       
         # create initial value spec columns
         init_spec_df = matches_df.apply(
             lambda x: get_spec_features(
@@ -444,6 +441,7 @@ def create_model_dataset_chunk(
                             spec_columns_  + ["query", "target"]
                         )
 
+
                         pieces.append(cleaned_df.iloc[:,:-2])
                         
                         # create columns of similarity scores
@@ -481,7 +479,7 @@ def create_model_dataset_chunk(
 
                                 handle.write(f"added {ticker} settings in {round(time.perf_counter() - start,2)}\n")
                                 start = time.perf_counter()
-                        
+
         out_df = pd.concat(pieces, axis=1)
         out_df["InchiCoreMatch"] = matches_df["InchiCoreMatch"]
         out_df["InchiKeyMatch"] = matches_df["InchiKeyMatch"]

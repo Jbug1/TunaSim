@@ -165,7 +165,6 @@ def centroid_spec(spec, ms2_ppm=None, ms2_da=None):
                 print("still error")
                 print(spec)
                 print(spec_new)
-                return yool
 
     else:
         return spec

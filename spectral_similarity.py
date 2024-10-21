@@ -3,6 +3,31 @@ import tools
 import numpy as np
 
 
+def normalize_distance(dist, dist_range):
+    if dist_range[1] == np.inf:
+        if dist_range[0] == 0:
+            result = 1 - 1 / (1 + dist)
+        elif dist_range[1] == 1:
+            result = 1 - 1 / dist
+        else:
+            raise NotImplementedError()
+    elif dist_range[0] == -np.inf:
+        if dist_range[1] == 0:
+            result = -1 / (-1 + dist)
+        else:
+            raise NotImplementedError()
+    else:
+        result = (dist - dist_range[0]) / (dist_range[1] - dist_range[0])
+
+    if result < 0:
+        result = 0.0
+    elif result > 1:
+        print('g1')
+        result = 1.0
+
+    return result
+
+
 def distance(
     spec_matched,
     method: str,
@@ -34,7 +59,7 @@ def multiple_similarity(
     result = {}
     if len(spectrum_query)==0 or len(spectrum_library)==0:
         for m in methods:
-            result[m]=0
+            result[m]=-1
         return result
 
     if ms2_ppm is not None:
