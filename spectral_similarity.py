@@ -43,7 +43,7 @@ def distance(
         raise RuntimeError("Method name: {} error!".format(method))
 
     # Normalize result
-    return tools.sigmoid(dist)
+    return dist
 
 
 def multiple_similarity(
