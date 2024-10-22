@@ -82,6 +82,22 @@ def entropy_distance(p, q):
     #keep Fiehn lab range
     return min(entropy_increase/np.log(4), 1)
 
+def entropyNoNorm_distance(p, q):
+    r"""
+    Unweighted entropy distance:
+
+    .. math::
+
+        -\frac{2\times S_{PQ}-S_P-S_Q} {ln(4)}, S_I=\sum_{i} {I_i ln(I_i)}
+    """
+    merged = p + q
+    entropy_increase = 2 * \
+                       scipy.stats.entropy(merged) - scipy.stats.entropy(p) - \
+                       scipy.stats.entropy(q)
+    
+    #keep Fiehn lab range
+    return entropy_increase
+
 
 def common_mass_distance(p, q):
 
