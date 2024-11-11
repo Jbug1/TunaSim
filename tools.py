@@ -75,7 +75,7 @@ def clean_spectrum(
     if ms2_da == 0 or ms2_ppm == 0:
         pass
     else:
-        spectrum = centroid_spec(spectrum, ms2_da=ms2_da, ms2_ppm=ms2_ppm)
+        spectrum = centroid_spec(spectrum, ms2_da=ms2_da)
 
     # 3. Remove noise ions...noise removal should now always be a function
     if noise_removal is not None and spectrum.shape[0] > 0:
@@ -88,6 +88,40 @@ def clean_spectrum(
 
     return spectrum
 
+def tuna_clean_spectrum(
+    spectrum,
+    max_mz: float = None,
+    noise_removal_fixed: float = None,
+    noise_removal_var: float = None,
+    ms2_da: float = None,
+    standardize = True,
+) -> np.ndarray:
+    
+    if len(spectrum) == 0:
+        return spectrum
+
+    # 1. Remove the precursor ions
+    if max_mz is not None:
+        spectrum = spectrum[spectrum[:, 0] <= max_mz]
+
+    if len(spectrum) == 0:
+        return spectrum
+
+    # 2. Centroid peaks
+    if ms2_da == 0:
+        pass
+    else:
+        spectrum = centroid_spec(spectrum, ms2_da=ms2_da)
+
+    # 3. Remove noise ions...noise removal should now always be a function
+    max_intensity = np.max(spectrum[:, 1])
+    spectrum = spectrum[spectrum[:, 1] >= noise_removal_fixed + noise_removal_var * max_intensity]
+
+    # 4. Standardize the spectrum.
+    if standardize:
+        spectrum = standardize_spectrum(spectrum)
+
+    return spectrum
 
 def centroid_spec(spec, ms2_ppm=None, ms2_da=None):
 
@@ -422,10 +456,25 @@ def weight_intensity(x, reweight_method):
     
     return reweight_method(x)
 
+def tuna_weight_intensity(spectrum,
+                          fixed_exp = 0,
+                          mz_exp = 0,
+                          entropy_exp = 0
+                          ):
+    
+    #mz based reweight
+    mz_power_array = np.power(spectrum[:,0], mz_exp)
+    intensities = np.power(spectrum[:,1], mz_power_array)
+    
+    return np.power(intensities, fixed_exp + scipy.stats.entropy(intensities) ** entropy_exp)
 
 
 def sigmoid(z):
   
     return 1/(1 + np.exp(-z))
+
+def get_max_mz(prec, fixed, var):
+
+    return prec - fixed - prec * var
 
 
