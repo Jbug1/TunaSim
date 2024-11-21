@@ -58,6 +58,7 @@ class func_ob:
         self.rand=rand
         self.n_iter = 0
         self.tol=tol
+        self.grad = None
         self.converged = None
         self.running_grad = None
         self.converged = None
@@ -133,9 +134,9 @@ class func_ob:
 
         #set index at 0 and initial running grad so that we don't trigger early stop
         i=0
-        running_grad = np.zeros(len(self.params)) + (self.running_grad_start/len(self.params))
+        self.running_grad = np.zeros(len(self.params)) + (self.running_grad_start/len(self.params))
 
-        while i<self.max_iter and sum(np.abs(running_grad))>self.tol:
+        while i<self.max_iter and sum(np.abs(self.running_grad))>self.tol:
 
             #grab individual row
             if self.rand:
@@ -146,39 +147,40 @@ class func_ob:
             #estimate gradient and update values
             if self.momentum_type == 'none':
                 
-                grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
                 
-                if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
                     print('bad grad')
                     i+=1
                     continue
 
-                init_vals -= self.lambdas * grad
+                init_vals -= self.lambdas * self.grad
                 
-                running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
+                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
                     
 
             elif self.momentum_type == 'simple':
 
-                grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                self.grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
                     print('bad grad')
                     i+=1
                     continue
-                running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
-                init_vals -= self.lambdas * running_grad
+
+                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
+                init_vals -= self.lambdas * self.running_grad
 
             elif self.momentum_type == 'jonie':
 
-                init_vals -= self.lambdas * self.momentum_weights[0] * running_grad
-                grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                if np.any(np.isnan(grad)) or np.any(np.isinf(grad)):
+                init_vals -= self.lambdas * self.momentum_weights[0] * self.running_grad
+                self.grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
                     print('bad grad')
                     i+=1
                     continue
                 
-                init_vals -= self.lambdas * self.momentum_weights[1] * grad
-                running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad
+                init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
+                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
             
             if self.bounds is not None:
                 init_vals = np.clip(init_vals, mins, maxs)
@@ -190,8 +192,8 @@ class func_ob:
 
         #update object based on results
         self.n_iter += i
-        self.converged = sum(running_grad)<self.tol
-        self.running_grad = running_grad 
+        self.converged = sum(self.running_grad)<self.tol
+        self.running_grad = self.running_grad 
         self.trained_vals = init_vals
 
     def trained_func(self):
