@@ -615,6 +615,20 @@ def dot_product_distance(p, q):
     )
     return 1 - np.sqrt(score)
 
+def dot_product_nosqrt_distance(p, q):
+    r"""
+    Dot product distance:
+
+    .. math::
+
+        1 - \sqrt{\frac{(\sum{Q_iP_i})^2}{\sum{Q_i^2\sum P_i^2}}}
+    """
+    num = np.power(np.sum(q * p), 2) 
+    denom = (
+        np.sum(np.power(q, 2)) * np.sum(np.power(p, 2))
+    )
+    
+    return 1 - num/denom
 
 def sigmoid_distance(p, q):
     """

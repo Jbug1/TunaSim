@@ -39,7 +39,8 @@ def tuna_sim(query,
             unnormed = 0,
             collapsed = 0,
             expanded = 0,
-            sigmoid_stretch = 1
+            sigmoid_stretch = 1,
+            sim_flip = False
             ):
     
     #get precursor based params
@@ -89,28 +90,34 @@ def tuna_sim(query,
     target = matched[:,2]
 
     #generate uncollapsed intensity combining funcitons
-    difs = dif_a * np.abs(query - target) ** dif_b
-    mults = mult_a * (query * target) ** mult_b
+    expanded_difs = dif_a * np.abs(query - target) ** dif_b
+    expanded_mults = mult_a * query * target ** mult_b
 
     #generate normalizations
-    mult_norm = mult_norm_a * (np.power(query, mult_norm_b) * np.power(target, mult_norm_b))
+    mult_norm = mult_norm_a * (np.sum(np.power(query, mult_norm_b)) * np.sum(np.power(target, mult_norm_b)))
     add_norm = add_norm_a * (np.power(query, add_norm_b) + np.power(target, add_norm_b))
 
     #potential unnormed term
     unnormed_term = 0
     if unnormed != 0:
-        unnormed_term = unnormed * (np.sum(difs) + np.sum(mults))
+        unnormed_term = unnormed * (np.sum(expanded_difs) + np.sum(expanded_mults))
 
     #depending on collapse and expand terms, consolidate or don't to some degree
     collapsed_term = 0
     if collapsed != 0:
-        collapsed_term = collapsed * (np.sum(difs) + np.sum(mults)) / (np.sum(mult_norm) + np.sum(add_norm)) 
+        collapsed_difs = dif_a * np.sum(np.abs(query - target)) ** dif_b
+        collapsed_mults = mult_a * np.sum(query * target) ** mult_b
+        collapsed_term = collapsed * (collapsed_difs + collapsed_mults) / (np.sum(mult_norm) + np.sum(add_norm)) 
 
     #mult norm doesn't really make sense for expanded normalization
     expanded_term = 0
     if expanded != 0:
-        expanded_term = expanded * np.sum((difs + mults) / add_norm)
+        expanded_term = expanded * np.sum((expanded_difs + expanded_mults) / add_norm)
 
-    return 1 - tools.sigmoid(sigmoid_stretch * (unnormed_term + collapsed_term + expanded_term))
+    #some metrics are expressed as sim measures
+    if sim_flip:
+        return tools.sigmoid(sigmoid_stretch * (unnormed_term + collapsed_term + expanded_term))
+    else:
+        return 1 - tools.sigmoid(sigmoid_stretch * (unnormed_term + collapsed_term + expanded_term))
 
 
