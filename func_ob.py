@@ -46,9 +46,9 @@ class func_ob:
         self.momentum_weights = momentum_weights
         self.epsilon = epsilon
         self.momentum_type = momentum_type
-        self.rand=rand
+        self.rand = rand
         self.n_iter = 0
-        self.tol=tol
+        self.tol = tol
         self.converged = None
         self.running_grad = None
         self.converged = None
