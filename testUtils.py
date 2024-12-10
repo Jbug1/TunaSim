@@ -12,6 +12,80 @@ import math
 import pickle
 from bisect import bisect_left
 
+def func_err_tester(base_objects, test_params, datasets , logpath=None):
+    """ 
+    base objects: func_obs pproperly named
+    test_params: dict with key: name value: params to be fit on
+    datasets: "dict key: name value: tuple of train and test
+    """
+
+    results = list()
+    for object in base_objects:
+
+        for name, params in test_params.items():
+
+            for dataset_name, (train, test) in datasets.items():
+
+                #don't train the original
+                train_func = copy.deepcopy(object)
+
+                #intiailize proper values and train
+                train_func.params = params
+                train_func.init_vals = np.zeros(len(params)) + 0.5
+                train_func.fit(train)
+
+                fitted_func = train_func.trained_func()
+
+                train_estimates = np.zeros(len(train))
+                for i in range(len(train)):
+
+                    train_estimates[i] = fitted_func(train.iloc[i]['query'],
+                                                    train.iloc[i]['target'],
+                                                    train.iloc[i]['precquery'],
+                                                    train.iloc[i]['prectarget'])
+                    
+                test_estimates = np.zeros(len(test))
+                for i in range(len(test)):
+
+                    test_estimates[i] = fitted_func(test.iloc[i]['query'],
+                                                    test.iloc[i]['target'],
+                                                    test.iloc[i]['precquery'],
+                                                    test.iloc[i]['prectarget'])
+                    
+                results.append([object.name, 
+                               name,
+                               train_func.init_vals,
+                               dataset_name,
+                               np.mean(abs(train_estimates - train['match'].to_numpy())),
+                               np.mean(abs(test_estimates - test['match'].to_numpy())),
+                               np.mean(abs(test_estimates - train['match'].to_numpy()))])
+                
+                if logpath is not None:
+                    with open(logpath, 'a') as handle:
+                        handle.write(f'''{[object.name, 
+                                        name, 
+                                        train_func.init_vals,
+                                        dataset_name,
+                                        np.mean(abs(train_estimates - train['match'].to_numpy())),
+                                        np.mean(abs(test_estimates - test['match'].to_numpy())),
+                                        np.mean(abs(test_estimates - train['match'].to_numpy()))]} \n''')
+
+    return pd.DataFrame(results, columns = ['name', 'params', 'trained_values', 'metric', 'train_err', 'test_err', 'range_control'])
+
+                
+def create_scores_from_tuna(demo_matches, sim_func):
+    
+    sims = np.zeros(len(demo_matches))
+    for i in range(len(demo_matches)):
+
+        sims[i] = sim_func(demo_matches.iloc[i]['query'],
+                      demo_matches.iloc[i]['target'],
+                      demo_matches.iloc[i]['precquery'],
+                      demo_matches.iloc[i]['prectarget'])
+        
+    sims[np.isnan(sims)] = 0
+    return sims
+
 
 def get_corr_and_control(corrs, num, max_combos=1e6, num_condition = 1, num_control = 1):
 

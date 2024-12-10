@@ -459,14 +459,14 @@ def weight_intensity(x, reweight_method):
 def tuna_weight_intensity(spectrum,
                           fixed_exp = 0,
                           mz_exp = 0,
-                          entropy_exp = 0
+                          entropy_exp = 0,
+                          offset = -1
                           ):
     
-    #mz based reweight
     mz_power_array = np.power(spectrum[:,0], mz_exp)
-    intensities = np.power(spectrum[:,1], mz_power_array)
+    intensities = spectrum[:,1]
     
-    return np.power(intensities, fixed_exp + scipy.stats.entropy(intensities) ** entropy_exp)
+    return np.power(intensities, offset + mz_power_array + fixed_exp + scipy.stats.entropy(intensities) ** entropy_exp)
 
 
 def sigmoid(z):

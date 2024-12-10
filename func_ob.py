@@ -28,15 +28,16 @@ class func_ob:
             momentum_weights = [0.8,0.2],
             epsilon = 1.4901161193847656e-08,
             momentum_type = 'none',
-            rand = False
+            rand = False,
+            zero_grad_lambda_boost = 0,
+            flexible_lambda = lambda: None
     ):
         self.name = name
         self.sim_func = sim_func
         self.regularization_name = regularization_name
         self.regularization_func = regularization_func
         self.loss_func = loss_func
-        self.init_vals = np.array(init_vals,dtype=float)
-        self.init_vals_ = np.array(init_vals, dtype=float)
+        self.init_vals = init_vals
         self.constraints=constraints
         self.params = list(params)
         self.solver=solver
@@ -47,13 +48,16 @@ class func_ob:
         self.epsilon = epsilon
         self.momentum_type = momentum_type
         self.rand = rand
+        self.zero_grad_lambda_boost = zero_grad_lambda_boost
         self.n_iter = 0
         self.tol = tol
+        self.flexible_lambda = flexible_lambda
         self.converged = None
         self.running_grad = None
         self.converged = None
         self.trained_vals = None
         self.objective_value = None
+        self.i = 0
         
 
     @property
@@ -65,6 +69,14 @@ class func_ob:
                         sim_func = self.sim_func)
     
     def fit(self, train_data, warm_start=False, verbose=None):
+
+        if type(self.init_vals) == float:
+            self.init_vals = np.array([self.init_vals for i in range(len(self.params))])
+            self.init_vals_ = np.array([self.init_vals for i in range(len(self.params))])
+
+        else:
+            self.init_vals = np.array(self.init_vals)
+            self.init_vals_ = np.array(self.init_vals)
 
         if self.solver == 'stoch':
 
@@ -94,10 +106,6 @@ class func_ob:
         Implement gradient descent for model tuning
         func must take: match, query, target
         """
-        if warm_start:
-            init_vals = self.trained_vals
-        else:
-            init_vals=self.init_vals
 
         if sum(self.momentum_weights)!=1:
             raise ValueError('sum of stop props must equal 1')
@@ -145,8 +153,6 @@ class func_ob:
                     continue
 
                 init_vals -= self.lambdas * grad
-    
-                running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
 
             elif self.momentum_type == 'simple':
 
@@ -155,10 +161,10 @@ class func_ob:
                     print('bad grad')
                     i+=1
                     continue
-                running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1] * grad
+                
                 init_vals -= self.lambdas * running_grad
 
-            elif self.momentum_type == 'jonie':
+            elif self.momentum_type == 'two_step':
 
                 init_vals -= self.lambdas * self.momentum_weights[0] * running_grad
                 grad = approx(init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
@@ -168,15 +174,27 @@ class func_ob:
                     continue
                 
                 init_vals -= self.lambdas * self.momentum_weights[1] * grad
-                running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad
+
+            #update running grad
+            running_grad = self.momentum_weights[0] * running_grad + self.momentum_weights[1]* grad
             
+            #clip values if bounded
             if self.bounds is not None:
                 init_vals = np.clip(init_vals, mins, maxs)
 
             i+=1
+
             if verbose is not None:
                 if i%verbose == 0:
                     print(f'completed {i} updates')
+
+            #update to lambda values
+            if self.zero_grad_lambda_boost != 0:
+
+                zero_inds = np.where(self.grad == 0)
+                self.lambdas[zero_inds] *= self.zero_grad_lambda_boost
+
+            self.flexible_lambda()
 
         #update object based on results
         self.n_iter += i

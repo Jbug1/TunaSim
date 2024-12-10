@@ -27,6 +27,8 @@ def tuna_sim(query,
             target_fixed_power = 0,
             target_mz_power = 0,
             target_ent_power = 0,
+            query_reweight_offset = -1,
+            target_reweight_offset = -1,
             match_tolerance = 0.05,
             dif_a = 0,
             dif_b = 1,
@@ -66,13 +68,15 @@ def tuna_sim(query,
     query[:,1] = tools.tuna_weight_intensity(query,
                                              query_fixed_power,
                                              query_mz_power,
-                                             query_ent_power
+                                             query_ent_power,
+                                             query_reweight_offset
                                              )
     
     target[:,1] = tools.tuna_weight_intensity(target,
                                              target_fixed_power,
                                              target_mz_power,
-                                             target_ent_power
+                                             target_ent_power,
+                                             target_reweight_offset
                                              )
     
     #restandardize everything before distance
