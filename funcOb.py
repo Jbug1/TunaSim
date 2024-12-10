@@ -19,8 +19,8 @@ class func_ob:
             self,
             name,
             sim_func,
-            init_vals,
-            params,
+            init_vals = 0.1,
+            params = None,
             regularization_func = lambda x: 0,
             loss_func = lambda x: x**2,
             regularization_name = '',
@@ -35,7 +35,9 @@ class func_ob:
             epsilon = 1.4901161193847656e-08,
             momentum_type = 'none',
             running_grad_start = 1e5,
-            rand = False
+            rand = False,
+            zero_grad_lambda_boost = None,
+            lambda_schedule = None
     ):
         self.name = name
         self.sim_func = sim_func
@@ -43,10 +45,9 @@ class func_ob:
         self.regularization_func = regularization_func
         self.loss_func = loss_func
         self.loss_name = loss_name
-        self.init_vals = np.array(init_vals,dtype=float)
-        self.init_vals_ = np.array(init_vals, dtype=float)
+        self.init_vals = init_vals
         self.constraints = constraints
-        self.params = list(params)
+        self.params = params
         self.solver = solver
         self.bounds = bounds
         self.lambdas = lambdas
@@ -56,6 +57,8 @@ class func_ob:
         self.momentum_type = momentum_type
         self.running_grad_start = running_grad_start
         self.rand=rand
+        self.zero_grad_lambda_boost = zero_grad_lambda_boost
+        self.lambda_schedule = lambda_schedule
         self.n_iter = 0
         self.tol=tol
         self.grad = None
@@ -75,6 +78,14 @@ class func_ob:
                         sim_func = self.sim_func)
     
     def fit(self, train_data, warm_start=False, verbose=None):
+
+        if type(self.init_vals) == float:
+            self.init_vals = np.array([self.init_vals for i in range(len(self.params))])
+            self.init_vals_ = np.array([self.init_vals for i in range(len(self.params))])
+
+        else:
+            self.init_vals = np.array(self.init_vals)
+            self.init_vals_ = np.array(self.init_vals)
 
         if self.solver == 'stoch':
 
@@ -189,6 +200,16 @@ class func_ob:
             if verbose is not None:
                 if i%verbose == 0:
                     print(f'completed {i} updates')
+
+            #update to lambda values
+            if self.zero_grad_lambda_boost != 0:
+
+                zero_inds = np.where(self.grad == 0)
+                self.lambdas[zero_inds] *= self.zero_grad_lambda_boost
+
+            if self.lambda_schedule:
+
+                self.lambdas = self.lambda_schedule(self.lambdas)
 
         #update object based on results
         self.n_iter += i

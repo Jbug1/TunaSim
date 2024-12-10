@@ -39,7 +39,7 @@ class func_ob:
         self.loss_func = loss_func
         self.init_vals = init_vals
         self.constraints=constraints
-        self.params = list(params)
+        self.params = params
         self.solver=solver
         self.bounds = bounds
         self.lambdas = lambdas
@@ -194,7 +194,9 @@ class func_ob:
                 zero_inds = np.where(self.grad == 0)
                 self.lambdas[zero_inds] *= self.zero_grad_lambda_boost
 
-            self.flexible_lambda()
+            if self.flexible_lambda:
+
+                self.lambdas = self.flexible_lambda(self.lambdas)
 
         #update object based on results
         self.n_iter += i
