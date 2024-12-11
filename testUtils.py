@@ -12,7 +12,7 @@ import math
 import pickle
 from bisect import bisect_left
 
-def func_err_tester(base_objects, test_params, datasets , logpath=None):
+def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose = None):
     """ 
     base objects: func_obs pproperly named
     test_params: dict with key: name value: params to be fit on
@@ -32,7 +32,7 @@ def func_err_tester(base_objects, test_params, datasets , logpath=None):
                 #intiailize proper values and train
                 train_func.params = params
                 train_func.init_vals = np.zeros(len(params)) + 0.5
-                train_func.fit(train)
+                train_func.fit(train, verbose = verbose)
 
                 fitted_func = train_func.trained_func()
 

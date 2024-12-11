@@ -13,7 +13,6 @@ def objective(x, args, loss_func, reg_func, sim_func):
                                                                           i['prectarget'],
                                                                           **kwargs)),axis=1) + reg_func(x))
 
-
 class func_ob:
     def __init__(
             self,
@@ -36,7 +35,7 @@ class func_ob:
             momentum_type = 'none',
             running_grad_start = 1e5,
             rand = False,
-            zero_grad_lambda_boost = 0,
+            zero_grad_epsilon_boost = 0,
             lambda_schedule = None
     ):
         self.name = name
@@ -57,7 +56,7 @@ class func_ob:
         self.momentum_type = momentum_type
         self.running_grad_start = running_grad_start
         self.rand=rand
-        self.zero_grad_lambda_boost = zero_grad_lambda_boost
+        self.zero_grad_epsilon_boost = zero_grad_epsilon_boost
         self.lambda_schedule = lambda_schedule
         self.n_iter = 0
         self.tol=tol
@@ -77,7 +76,7 @@ class func_ob:
                         reg_func = self.regularization_func, 
                         sim_func = self.sim_func)
     
-    def fit(self, train_data, warm_start=False, verbose=None):
+    def set_array_params(self):
 
         if type(self.init_vals) == float:
             self.init_vals = np.array([self.init_vals for i in range(len(self.params))])
@@ -88,12 +87,20 @@ class func_ob:
             self.init_vals_ = np.array(self.init_vals)
 
         if type(self.lambdas) == float or type(self.lambdas) == int:
-            self.init_vals = np.array([self.lambdas for i in range(len(self.params))])
-            self.init_vals_ = np.array([self.lambdas for i in range(len(self.params))])
+            self.lambdas = np.array([self.lambdas for i in range(len(self.params))])
 
         else:
-            self.init_vals = np.array(self.lambdas)
-            self.init_vals_ = np.array(self.lambdas)
+            self.lambdas = np.array(self.lambdas)
+
+        if type(self.epsilon) == float or type(self.epsilon) == int:
+            self.epsion = np.array([self.epsilon for i in range(len(self.params))])
+
+        else:
+            self.epsilon = np.array(self.epsilon)
+    
+    def fit(self, train_data, warm_start=False, verbose=None):
+
+        self.set_array_params()
 
         if self.solver == 'stoch':
 
@@ -117,7 +124,6 @@ class func_ob:
         self.n_iter += scipy_res.nfev
         self.objective_value = scipy_res.fun
 
-
     def stoch_descent(self, train_data, warm_start=False, verbose=None):
         """ 
         Implement gradient descent for model tuning
@@ -133,9 +139,6 @@ class func_ob:
         
         if self.tol<0:
             raise ValueError('early stop must be geq 0')
-
-        if type(self.lambdas)==float or type(self.lambdas) == int:
-            self.lambdas = np.array([self.lambdas for _ in range(len(self.params))])
 
         if len(self.init_vals) != len(self.params) or len(self.params)!= len(self.lambdas):
             raise ValueError('all input vectors must have same first dimension')
@@ -210,10 +213,10 @@ class func_ob:
                     print(f'completed {i} updates')
 
             #update to lambda values
-            if self.zero_grad_lambda_boost != 0:
+            if self.zero_grad_epsilon_boost != 0:
 
                 zero_inds = np.where(self.grad == 0)
-                self.lambdas[zero_inds] *= self.zero_grad_lambda_boost
+                self.epsilon[zero_inds] *= self.zero_grad_epsilon_boost
 
             if self.lambda_schedule:
 
