@@ -36,7 +36,7 @@ class func_ob:
             momentum_type = 'none',
             running_grad_start = 1e5,
             rand = False,
-            zero_grad_lambda_boost = None,
+            zero_grad_lambda_boost = 0,
             lambda_schedule = None
     ):
         self.name = name
@@ -86,6 +86,14 @@ class func_ob:
         else:
             self.init_vals = np.array(self.init_vals)
             self.init_vals_ = np.array(self.init_vals)
+
+        if type(self.lambdas) == float or type(self.lambdas) == int:
+            self.init_vals = np.array([self.lambdas for i in range(len(self.params))])
+            self.init_vals_ = np.array([self.lambdas for i in range(len(self.params))])
+
+        else:
+            self.init_vals = np.array(self.lambdas)
+            self.init_vals_ = np.array(self.lambdas)
 
         if self.solver == 'stoch':
 
