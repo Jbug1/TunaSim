@@ -12,7 +12,7 @@ import math
 import pickle
 from bisect import bisect_left
 
-def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose = None):
+def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose = None, test_len = 1e10):
     """ 
     base objects: func_obs pproperly named
     test_params: dict with key: name value: params to be fit on
@@ -31,21 +31,22 @@ def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose =
 
                 #intiailize proper values and train
                 train_func.params = params
-                train_func.init_vals = np.zeros(len(params)) + 0.5
                 train_func.fit(train, verbose = verbose)
 
                 fitted_func = train_func.trained_func()
 
-                train_estimates = np.zeros(len(train))
-                for i in range(len(train)):
+                train_len = min(len(train), train_func.max_iter)
+                train_estimates = np.zeros(train_len)
+                for i in range(train_len):
 
                     train_estimates[i] = fitted_func(train.iloc[i]['query'],
                                                     train.iloc[i]['target'],
                                                     train.iloc[i]['precquery'],
                                                     train.iloc[i]['prectarget'])
                     
-                test_estimates = np.zeros(len(test))
-                for i in range(len(test)):
+                test_len = min(test_len, len(test))
+                test_estimates = np.zeros(test_len)
+                for i in range(test_len):
 
                     test_estimates[i] = fitted_func(test.iloc[i]['query'],
                                                     test.iloc[i]['target'],

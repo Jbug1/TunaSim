@@ -26,17 +26,21 @@ class func_ob:
             loss_name = 'l2',
             constraints = None,
             solver = 'stoch',
-            bounds = None,
             lambdas = 1,
             max_iter = 1e5,
             tol = 1e-10,
             momentum_weights = [0.8,0.2],
             epsilon = 1.4901161193847656e-08,
-            momentum_type = 'none',
+            momentum_type = 'None',
             running_grad_start = 1e5,
             rand = False,
             zero_grad_epsilon_boost = 0,
-            lambda_schedule = None
+            lambda_schedule = None,
+            bounds = {
+                "query_da_thresh":[0,np.inf],
+                "target_da_thresh":[0,np.inf],
+                "match_tolerance":[0,np.inf]
+            }
     ):
         self.name = name
         self.sim_func = sim_func
@@ -80,7 +84,7 @@ class func_ob:
 
         if type(self.init_vals) == float:
             self.init_vals = np.array([self.init_vals for i in range(len(self.params))])
-            self.init_vals_ = np.array([self.init_vals for i in range(len(self.params))])
+            self.init_vals_ = self.init_vals
 
         else:
             self.init_vals = np.array(self.init_vals)
@@ -97,6 +101,15 @@ class func_ob:
 
         else:
             self.epsilon = np.array(self.epsilon)
+
+        #set arrays for bounds
+        self.min_bounds = np.array([-np.inf for i in range(len(self.params))])
+        self.max_bounds = np.array([np.inf for i in range(len(self.params))])
+
+        for key, value in self.bounds.items():
+            ind = np.where(self.params == key)
+            self.min_bounds[ind] = value[0]
+            self.max_bounds[ind] = value[1]
     
     def fit(self, train_data, warm_start=False, verbose=None):
 
@@ -143,17 +156,6 @@ class func_ob:
         if len(self.init_vals) != len(self.params) or len(self.params)!= len(self.lambdas):
             raise ValueError('all input vectors must have same first dimension')
 
-        if self.bounds is not None:
-            
-            mins = np.array([-np.inf for i in range(len(self.params))])
-            maxs = np.array([np.inf for i in range(len(self.params))])
-            
-            for param in self.bounds.keys():
-
-                ind = self.params.index(param)
-                mins[ind]=self.bounds[param][0]
-                maxs[ind]=self.bounds[param][1]
-
         #set index at 0 and initial running grad so that we don't trigger early stop
         i=0
         self.running_grad = np.zeros(len(self.params)) + (self.running_grad_start/len(self.params))
@@ -167,10 +169,10 @@ class func_ob:
                 index=i%train_data.shape[0]
             
             #estimate gradient and update values
-            if self.momentum_type == 'none':
+            if self.momentum_type == 'None':
                 
                 self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                
+
                 if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
                     print('bad grad')
                     i+=1
@@ -179,7 +181,6 @@ class func_ob:
                 init_vals -= self.lambdas * self.grad
                 
                 self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
-                    
 
             elif self.momentum_type == 'simple':
 
@@ -204,21 +205,21 @@ class func_ob:
                 init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
                 self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
             
-            if self.bounds is not None:
-                init_vals = np.clip(init_vals, mins, maxs)
+            
+            init_vals = np.clip(init_vals, self.min_bounds, self.max_bounds)
 
             i+=1
             if verbose is not None:
                 if i%verbose == 0:
                     print(f'completed {i} updates')
 
-            #update to lambda values
+            #update to epsilon values
             if self.zero_grad_epsilon_boost != 0:
 
                 zero_inds = np.where(self.grad == 0)
                 self.epsilon[zero_inds] *= self.zero_grad_epsilon_boost
 
-            if self.lambda_schedule:
+            if self.lambda_schedule is not None:
 
                 self.lambdas = self.lambda_schedule(self.lambdas)
 
