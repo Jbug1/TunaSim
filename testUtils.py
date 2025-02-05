@@ -9,7 +9,6 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score as auc
 import itertools
 import math
-import pickle
 from bisect import bisect_left
 
 def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose = None, test_len = 1e10):
@@ -53,13 +52,15 @@ def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose =
                                                     test.iloc[i]['precquery'],
                                                     test.iloc[i]['prectarget'])
                     
+                
                 results.append([object.name, 
                                name,
                                train_func.init_vals,
+                               train_func.epsilon,
                                dataset_name,
-                               np.mean(abs(train_estimates - train['match'].to_numpy())),
-                               np.mean(abs(test_estimates - test['match'].to_numpy())),
-                               np.mean(abs(test_estimates - train['match'].to_numpy()))])
+                               np.mean(abs(train_estimates - train.iloc[:train_len]['match'].to_numpy())),
+                               np.mean(abs(np.mean(train_estimates) - test.iloc[:test_len]['match'].to_numpy())),
+                               np.mean(abs(test_estimates - train.iloc[:test_len]['match'].to_numpy()))])
                 
                 if logpath is not None:
                     with open(logpath, 'a') as handle:
@@ -67,11 +68,11 @@ def func_err_tester(base_objects, test_params, datasets, logpath=None, verbose =
                                         name, 
                                         train_func.init_vals,
                                         dataset_name,
-                                        np.mean(abs(train_estimates - train['match'].to_numpy())),
-                                        np.mean(abs(test_estimates - test['match'].to_numpy())),
-                                        np.mean(abs(test_estimates - train['match'].to_numpy()))]} \n''')
+                                        np.mean(abs(train_estimates - train.iloc[:train_len]['match'].to_numpy())),
+                                        np.mean(abs(np.mean(train_estimates) - test.iloc[:test_len]['match'].to_numpy())),
+                                        np.mean(abs(test_estimates - train.iloc[:test_len]['match'].to_numpy()))]} \n''')
 
-    return pd.DataFrame(results, columns = ['name', 'params', 'trained_values', 'metric', 'train_err', 'test_err', 'range_control'])
+    return pd.DataFrame(results, columns = ['name', 'params', 'trained_values', 'fin_epsilons', 'metric', 'train_err', 'test_err', 'range_control'])
 
                 
 def create_scores_from_tuna(demo_matches, sim_func):
