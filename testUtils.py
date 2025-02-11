@@ -1,7 +1,5 @@
 import TunaSims
-import func_ob
-import spectral_similarity
-import tools
+from funcOb import func_ob
 import copy
 
 import numpy as np

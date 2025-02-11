@@ -2,9 +2,20 @@ import numpy as np
 import scipy
 import tools_fast
 from dataclasses import dataclass
+from math import prod
 
-
+@dataclass
 class TunaSim:
+
+    query = None
+    target = None
+    prec_query = None
+    prec_target = None
+    zero_clip: float = True
+    standardize: float = True
+    set_grad1: bool = True
+    set_grad2: bool = True
+    lazy_grads1_reweight = None
 
     @staticmethod
     def tuna_weight_intensity(spectrum,
@@ -19,22 +30,23 @@ class TunaSim:
         
         return np.power(intensities, offset + mz_power_array + fixed_exp + scipy.stats.entropy(intensities) ** entropy_exp)
 
-    @staticmethod
-    def smooth_reweight(array,
-                        intercept,
-                        a,
-                        b,
-                        c):
-        ''' 
-        give new weightings based on array values and passed parameters
-        '''
-        
-        return intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
         
     @staticmethod
     def sigmoid(z):
     
         return 1/(1 + np.exp(-z))
+    
+    def restandardize(self):
+
+        if self.lazy_grads1_reweight is not None:
+
+            self.query[:,1] /= np.sum(self.query[:,1])
+            self.target[:,1] /= np.sum(self.target[:,1])
+    
+    def clip(self):
+
+        if self.set_grad1 and self.lazy_grads1_reweight is not None:
+
     
 @dataclass
 class TunaSmoothSim(TunaSim):
@@ -92,13 +104,57 @@ class TunaSmoothSim(TunaSim):
     expanded: float = 0
     match_tolerance: float = 0.05
     sim_flip: float= False
-    zero_clip: float = True
-    restandardize: float = True
     sig_factor: float = 1
+    ms2_da: float = None
+    ms2_ppm: float = None
+    weight_combine: str = 'add'
+
+    lazy_grads1_reweight = dict()
+    lazy_grads2_reweight = dict()
+
 
     def __post_init__(self):
 
         self.set_weight_triggers()
+
+        self.query_mz_weights = None
+        self.query_mz_offset_weights = None
+        self.query_intensity_weights = None
+        self.query_normalized_intensity_weights = None
+        self.query_entropy_weights = None
+
+        self.target_mz_weights = None
+        self.target_mz_offset_weights = None
+        self.target_intensity_weights = None
+        self.target_normalized_intensity_weights = None
+        self.target_entropy_weights = None
+
+    def smooth_reweight(self,
+                        name,
+                        array,
+                        intercept,
+                        a,
+                        b,
+                        c):
+        ''' 
+        give new weightings based on array values and passed parameters
+        '''
+
+        if self.set_grad1:
+
+            if intercept != 0:
+                self.lazy_grads1_reweight[f'{name}_int'] = np.ones(len(array))
+            
+            if a != 0:
+                self.lazy_grads1_reweight[f'{name}_a'] = array
+
+            if b != 0:
+                self.lazy_grads1_reweight[f'{name}_a'] = array**2
+
+            if c != 0:
+                self.lazy_grads1_reweight[f'{name}_a'] = array**3
+        
+        return intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
 
     def set_weight_triggers(self):
         ''' 
@@ -111,34 +167,36 @@ class TunaSmoothSim(TunaSim):
                     'entropy'
                     ]
         #set initial state to False, if some input is non-zero, then flip it to True
+        #begin under the assumption that we will do no reweighting
+        self.unweighted = True
         for trigger in triggers:
             setattr(self, trigger, False)
             for side in ['query','target']:
                 for variable in ['int','a','b','c']:
 
                     if getattr(self, f'{side}_{trigger}_{variable}') != 0:
-                        setattr(self, trigger, True)
 
-    def predict(self,
-                query,
-                target,
-                prec_query,
-                prec_target):
+                        #set the proper side to let us know to compute values and track derivatives
+                        #set unweighted to false if at least one is true
+                        setattr(self, f'{trigger}-{side}', True)
+                        self.unweighted = False
+
+    def predict(self):
+
         ''' 
-        this funciton will yield a [0,1] interval similarity prediction
+        this function will yield a [0,1] interval similarity prediction
         predict also sets the values of potentially relevant gradint calculation parameters,
         and is therefore analagous to forward pass before backprop
         '''
 
-        query_ints_reweight, target_ints_reweight = self.smooth_reweight(query, target, prec_query, prec_target)
+        #set reweighted query and target
+        self.set_reweighted_intensity()
 
         if self.zero_clip:
             query_ints_reweight = np.clip(query_ints_reweight,0)
             target_ints_reweight = np.clip(target_ints_reweight,0)
 
-        if self.restandardize:
-            query[:,1] /= np.sum(query[:,1])
-            target[:,1] /= np.sum(target[:,1])
+        self.consolidate()
         
         #match peaks
         matched = tools_fast.match_peaks_in_spectra(query,
@@ -182,57 +240,64 @@ class TunaSmoothSim(TunaSim):
             return 1 - self.sigmoid(self.sig_factor *(unnormed_term + collapsed_term + expanded_term))
 
 
-    def smooth_reweight(self,
-                query,
-                target,
-                prec_query,
-                prec_target):
+    def set_reweighted_intensity(self):
         ''' 
-        This function performs reweighting only
+        This function performs reweighting and deriv setting for reweighting
         '''
 
+        #roll with original query if no reweighting is required
+        if self.unweighted:
+            return
+
         #get reweight based on raw mz values
-        if self.mz:
-            self.query_mz_weights = self.tuna_smooth_weight(query[:,0], 
-                                                                self.query_mz_int,
-                                                                self.query_mz_a,
-                                                                self.query_mz_b,
-                                                                self.query_mz_c,
-                                                            )
-                            
-            self.target_mz_weights = self.tuna_smooth_weight(target[:,0], 
-                                                                self.target_mz_int,
-                                                                self.target_mz_a,
-                                                                self.target_mz_b,
-                                                                self.target_mz_c,
+        if self.mz_query:
+            self.query_mz_weights = self.smooth_reweight(self.query[:,0],
+                                                        'mz_query', 
+                                                        self.query_mz_int,
+                                                        self.query_mz_a,
+                                                        self.query_mz_b,
+                                                        self.query_mz_c,
+                                                        )
+            
+        if self.mz_target:           
+            self.target_mz_weights = self.smooth_reweight(self.target[:,0], 
+                                                          'mz_target', 
+                                                            self.target_mz_int,
+                                                            self.target_mz_a,
+                                                            self.target_mz_b,
+                                                            self.target_mz_c,
                                                             )
         
         #grab weights for spectra as precursor offset
-        if self.mz_offset:
-            self.query_mz_offset_weights = self.tuna_smooth_weight(query[:,0] - prec_query, 
-                                                                    self.query_mz_offset_int,
-                                                                    self.query_mz_offset_a,
-                                                                    self.query_mz_offset_b,
-                                                                    self.query_mz_offset_c,
+        if self.mz_offset_query:
+            self.query_mz_offset_weights = self.smooth_reweight(self.query[:,0] - self.prec_query, 
+                                                                'mz_offset_query',
+                                                                self.query_mz_offset_int,
+                                                                self.query_mz_offset_a,
+                                                                self.query_mz_offset_b,
+                                                                self.query_mz_offset_c,
                                                                 )
-            
-            self.target_mz_offset_weights = self.tuna_smooth_weight(target[:,0] - prec_target, 
-                                                                    self.target_mz_offset_int, 
-                                                                    self.target_mz_offset_a,
-                                                                    self.target_mz_offset_b,
-                                                                    self.target_mz_offset_c,
+        if self.mz_offset_target:   
+            self.target_mz_offset_weights = self.smooth_reweight(self.target[:,0] - self.prec_target, 
+                                                                 'mz_offset_target',
+                                                                self.target_mz_offset_int, 
+                                                                self.target_mz_offset_a,
+                                                                self.target_mz_offset_b,
+                                                                self.target_mz_offset_c,
                                                                 )
         
         #as a function of intensities
-        if self.intensity:
-            self.query_int_weights = self.tuna_smooth_weight(query[:,1], 
+        if self.intensity_query:
+            self.query_intensity_weights = self.smooth_reweight(self.query[:,1], 
+                                                                'intensity_query',
                                                                 self.query_intensity_int,
                                                                 self.query_intensity_a,
                                                                 self.query_intensity_b,
                                                                 self.query_intensity_c,
                                                             )
-            
-            self.target_int_weights = self.tuna_smooth_weight(target[:,1],
+        if self.intensity_target:   
+            self.target_intensity_weights = self.smooth_reweight(self.target[:,1],
+                                                                'intensity_target',
                                                                 self.target_intensity_int, 
                                                                 self.target_intensity_a,
                                                                 self.target_intensity_b,
@@ -240,39 +305,84 @@ class TunaSmoothSim(TunaSim):
                                                             )
         
         #as a funciton of normalized intensities
-        if self.normalized_intensity:
-            self.query_norm_int_weights = self.tuna_smooth_weight(query[:,1] /np.sum(query[:,1]), 
-                                                            self.query_normalized_intensity_int,
-                                                            self.query_normalized_intensity_a,
-                                                            self.query_normalized_intensity_b,
-                                                            self.query_normalized_intensity_c,
-                                                            )
+        if self.normalized_intensity_query:
+            self.query_normalized_intensity_weights = self.smooth_reweight(self.query[:,1] /np.sum(self.query[:,1]), 
+                                                                            'normalized_intensity_query',
+                                                                            self.query_normalized_intensity_int,
+                                                                            self.query_normalized_intensity_a,
+                                                                            self.query_normalized_intensity_b,
+                                                                            self.query_normalized_intensity_c,
+                                                                            )
             
-            self.target_norm_int_weights = self.tuna_smooth_weight(target[:,1] / np.sum(target[:,1]), 
-                                                    self.target_normalized_intensity_int,
-                                                    self.target_normalized_intensity_a,
-                                                    self.target_normalized_intensity_b,
-                                                    self.target_normalized_intensity_c,
-                                                    )
+        if self.normalized_intensity_target:   
+            self.target_normalized_intensity_weights = self.smooth_reweight(self.target[:,1] / np.sum(self.target[:,1]), 
+                                                                            'normalized_intensity_target',
+                                                                            self.target_normalized_intensity_int,
+                                                                            self.target_normalized_intensity_a,
+                                                                            self.target_normalized_intensity_b,
+                                                                            self.target_normalized_intensity_c,
+                                                                            )
         
 
-        if self.entropy:
-            self.query_entropy_weights = self.tuna_smooth_weight(np.zeros(len(query)) + scipy.stats.entropy(query[:,1]), 
-                                                    self.query_entropy_int,
-                                                    self.query_entropy_a,
-                                                    self.query_entropy_b,
-                                                    self.query_entropy_c,
-                                                    )
+        if self.entropy_query:
+            self.query_entropy_weights = self.smooth_reweight(np.zeros(len(self.query)) + scipy.stats.entropy(self.query[:,1]), 
+                                                              'entropy_query',
+                                                                self.query_entropy_int,
+                                                                self.query_entropy_a,
+                                                                self.query_entropy_b,
+                                                                self.query_entropy_c,
+                                                                )
             
-            self.target_entropy_weights = self.tuna_smooth_weight(np.zeros(len(target)) + scipy.stats.entropy(target[:,1]), 
-                                                    self.target_entropy_int,
-                                                    self.target_entropy_a,
-                                                    self.target_entropy_b,
-                                                    self.target_entropy_c,
-                                                    )
+        if self.entropy_target:
+            self.target_entropy_weights = self.smooth_reweight(np.zeros(len(self.target)) + scipy.stats.entropy(self.target[:,1]),
+                                                               'entropy_target', 
+                                                                self.target_entropy_int,
+                                                                self.target_entropy_a,
+                                                                self.target_entropy_b,
+                                                                self.target_entropy_c,
+                                                                )
             
         #combine components for intensities and return
-        return (self.combine_intensity_weights('query'), self.combine_intensity_weights('target'),0)
+        self.combine_intensity_weights()
+
+    
+    def combine_intensity_weights(self):
+
+        query_components = [self.query_mz_weights,
+                            self.query_mz_offset_weights,
+                            self.query_intensity_weights,
+                            self.query_normalized_intensity_weights,
+                            self.query_entropy_weights]
+        
+        target_components = [self.target_mz_weights,
+                            self.target_mz_offset_weights,
+                            self.target_intensity_weights,
+                            self.target_normalized_intensity_weights,
+                            self.target_entropy_weights]
+        
+        query_components = [i for i in query_components if i is not None]
+        target_components = [i for i in target_components if i is not None]
+
+        if self.weight_combine == 'add':
+
+            query_intensities = sum(query_components)
+            target_intensities = sum(target_components)
+
+        elif self.weight_combine == 'multiply':
+
+            query_intensities = prod(query_components)
+            target_intensities = prod(target_components)
+
+        self.query[:,1] = query_intensities
+        self.target[:,1] = target_intensities
+
+    def set_pred_derivs(self):
+        ''' 
+        set derivatives for any parameter based on function values
+        This should arguably be consolidated with the forward pass later
+        '''
+
+
 
 
         
