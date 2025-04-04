@@ -238,7 +238,7 @@ class func_ob:
 
     def trained_func(self):
         if self.trained_vals is None:
-            raise ValueError('functon has not been trained')
+            raise ValueError('function has not been trained')
 
         else:
             kwargs = {k:v for k,v in zip(self.params,self.trained_vals)}
