@@ -45,7 +45,10 @@ class TunaSim:
 
     
 @dataclass
-class TunaSmoothSim(TunaSim):
+class ExpandedTuna(TunaSim):
+    ''' 
+    covers harmonic mean, prob symetric chi square, lorentzian, bhattacharya, matusita
+    '''
                 
     query_mz_a: float = 0
     query_mz_b: float = 0
@@ -83,19 +86,8 @@ class TunaSmoothSim(TunaSim):
     mult_b: float = 1
     add_norm_a: float= 0
     add_norm_b: float = 1
-    col_dif_a: float = 0
-    col_dif_b: float = 1
-    col_mult_a: float = 0
-    col_mult_b: float = 1
-    mult_norm_a: float = 0
-    mult_norm_b: float = 1
-    col_add_norm_a: float = 0
-    col_add_norm_b: float = 1
-    collapsed: float = 0
-    expanded: float = 0
     match_tolerance: float = 0.05
-    sim_flip: float= False
-    sig_factor: float = 1
+    sigmoid: bool = True
     ms2_da: float = None
     ms2_ppm: float = None
     weight_combine: str = 'add'
@@ -185,9 +177,6 @@ class TunaSmoothSim(TunaSim):
         and is therefore analagous to forward pass before backprop
         '''
 
-        expanded_term = 0
-        collapsed_term = 0
-
         #match peaks...will ensure same number for both specs
         #same number is easier for grad but could be worth changing in future
         matched = tools_fast.match_peaks_in_spectra(query,
@@ -216,61 +205,64 @@ class TunaSmoothSim(TunaSim):
         mults = query * target
         add = query + target
 
-        #mult norm doesn't really make sense for expanded normalization, can have div0
-        expanded_term = 0
-        if self.expanded != 0:
+        #generate expanded terms
+        expanded_difs = self.dif_a * difs_abs ** self.dif_b
+        expanded_mults = self.mult_a * mults ** self.mult_b
+        add_norm = self.add_norm_a * np.power(add, self.add_norm_b)
 
-            #generate expanded terms
-            expanded_difs = self.dif_a * difs_abs ** self.dif_b
-            expanded_mults = self.mult_a * mults ** self.mult_b
-            add_norm = self.add_norm_a * np.power(add, self.add_norm_b)
+        #calcualte gradient for similarity score params of dif and mult a(R -> R)
+        self.grads1_agg_int['expanded_dif_a'] = np.sum(expanded_difs / (self.dif_a * add_norm))
+        self.grads1_agg_int['expanded_mult_a'] = np.sum(expanded_difs / (self.dif_a * add_norm))
 
-            #calcuate actual siilarity term
-            expanded_term = self.expanded * np.sum((expanded_difs + expanded_mults) / add_norm)
+        self.grads1_agg_int['expanded_dif_b'] = self.dif_a * np.sum((difs_abs ** self.dif_b) * np.log(difs_abs) / add_norm)
+        self.grads1_agg_int['expanded_mult_b'] = self.mult_a * np.sum((mults ** self.mult_b) * np.log(mults) / add_norm)
+        
+        self.grads1_agg_int['expanded_add_a'] = -1 / self.add_norm_a 
+        self.grads1_agg_int['expanded_add_b'] = -((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a
 
-            #calcualte gradient for similarity score params of dif and mult a(R -> R)
-            self.grads1_agg_int['expanded_dif_a'] = np.sum(expanded_difs / (self.dif_a * add_norm))
-            self.grads1_agg_int['expanded_mult_a'] = np.sum(expanded_difs / (self.dif_a * add_norm))
+        #very messy cacluation of terms
+        #going for efficiency with intermediate results here
+        dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
+        dif_grad_t = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * -difs
+        mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
+        mult_grad_q = mult_grad * target
+        mult_grad_t = mult_grad * query
+        add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
+        second_term = (expanded_difs + expanded_mults) * add_grad
+        add_norm_square = np.power(add_norm, 2)
 
-            self.grads1_agg_int['expanded_dif_b'] = self.expanded * self.dif_a * np.sum((difs_abs ** self.dif_b) * np.log(difs_abs) / add_norm)
-            self.grads1_agg_int['expanded_mult_b'] = self.expanded * self.mult_a * np.sum((mults ** self.mult_b) * np.log(mults) / add_norm)
-            
-            self.grads1_agg_int['expanded_add_a'] = -expanded_term / self.add_norm_a 
-            self.grads1_agg_int['expanded_add_b'] = -((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a
+        #gradients w.r.t. query and target...for passing down reweight param grads
+        query_grad = ((dif_grad_q + mult_grad_q) * add_norm - second_term) / add_norm_square
+        target_grad = ((dif_grad_t + mult_grad_t) * add_norm - second_term) / add_norm_square
 
-            #very messy cacluation of terms
-            #going for efficiency with intermediate results here
-            dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
-            dif_grad_t = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * -difs
-            mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
-            mult_grad_q = mult_grad * target
-            mult_grad_t = mult_grad * query
-            add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
-            second_term = (expanded_difs + expanded_mults) * add_grad
-            add_norm_square = np.power(add_norm, 2)
+        #final step is to calculate grads of score output w.r.t. all reweight params
+        for key, value in self.grads1_int_param.items():
 
-            #gradients w.r.t. query and target...for passing down reweight param grads
-            self.grads1_agg_int['query'] += ((dif_grad_q + mult_grad_q) * add_norm - second_term) / add_norm_square
-            self.grads1_agg_int['target'] += ((dif_grad_t + mult_grad_t) * add_norm - second_term) / add_norm_square
+            if key.split('_')[0] == 'query':
+                side = query_grad
+            else:
+                side = target_grad
 
-        #depending on collapse and expand terms, consolidate or don't to some degree
-        if self.collapsed != 0:
+            #chain rule f'(g(x)) is grad of query or target
+            #g'(x) is grad w.r.t. whichever parameter
+            if self.sigmoid:
+                sig_grad = self.sigmoid(np.sum(value * side))
+                self.grads1_score_agg[key] = 
+            else:
+                self.grads1_score_agg[key] = np.sum(value * side)
 
-            #collapse all terms an
-            difs_abs = np.sum(difs_abs)
-            mults = np.sum(mults)
-            add_norm = np.sum(add)
-            mult_norm = np.sum(query * target)
+        if self.sigmoid:
+            for key, value in self.grads1_agg_int.items():
 
-            collapsed_difs = self.dif_a * np.sum(np.abs(query - target)) ** self.dif_b
-            collapsed_mults = self.mult_a * np.sum(query * target) ** self.mult_b
-            collapsed_term = self.collapsed * (collapsed_difs + collapsed_mults) / (np.sum(mult_norm) + np.sum(add_norm)) 
-
-        #some metrics are expressed as sim measures
-        if self.sim_flip:
-            return self.sigmoid(self.sig_factor *(collapsed_term + expanded_term))
+                    sig_grad = self.sigmoid(self.grads1_agg_int[key])
+                    self.grads1_score_agg[key] =  sig_grad * (1 - sig_grad)
         else:
-            return 1 - self.sigmoid(self.sig_factor *(collapsed_term + expanded_term))
+            self.grads1_score_agg.update(self.grads1_agg_int)
+
+        if self.sigmoid:
+            return self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
+        else:
+            return np.sum((expanded_difs + expanded_mults) / add_norm)
 
 
     def set_reweighted_intensity(self, query, target):
@@ -411,5 +403,21 @@ class TunaSmoothSim(TunaSim):
 
 
 
+def yool():
+    #depending on collapse and expand terms, consolidate or don't to some degree
+        if self.collapsed != 0:
+
+            #collapse all terms an
+            difs_abs = np.sum(difs_abs)
+            mults = np.sum(mults)
+            add_norm = np.sum(add)
+            mult_norm = np.sum(query * target)
+
+            collapsed_difs = self.dif_a * np.sum(np.abs(query - target)) ** self.dif_b
+            collapsed_mults = self.mult_a * np.sum(query * target) ** self.mult_b
+            collapsed_term = self.collapsed * (collapsed_difs + collapsed_mults) / (np.sum(mult_norm) + np.sum(add_norm)) 
+
+        #some metrics are expressed as sim measures
+        return self.sigmoid(self.sig_factor *(expanded_term))
 
         
