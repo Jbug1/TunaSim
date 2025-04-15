@@ -4,6 +4,7 @@ from functools import partial
 from typing import Callable, List
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
+import copy
 
 
 class func_ob:
@@ -27,29 +28,25 @@ class func_ob:
             self,
             name: str,
             sim_func: Callable,
-            init_vals: List[float] = 0.1,
-            params: List[str] = None,
+            init_vals: dict,
             param_grad: List[Callable] = None,
             param_grad2: List[Callable] = None,
             regularization_func: Callable = lambda x: 0,
             regularization_grad: Callable = None,
             loss_func: Callable = lambda x: x**2,
+            loss_grad: Callable = lambda x: 2 * x,
             regularization_name: str = '',
             loss_name: str = 'l2',
             solver: str = 'stoch',
             lambdas: List[float] = 1,
             max_iter: int = 1e5,
-            tol: float = 1e-10,
             momentum_weights: List[float] = [0.8,0.2],
             momentum_type: str = 'None',
             running_grad_start: float = 1e5,
             rand: bool = False,
             scheduler: Callable = None,
-            bounds: dict = {
-                "query_da_thresh":[0,np.inf],
-                "target_da_thresh":[0,np.inf],
-                "match_tolerance":[0,np.inf]
-            }
+            bounds: dict = None,
+            tol: float = 0.0
     ):
         self.name = name
         self.sim_func = sim_func
@@ -57,14 +54,13 @@ class func_ob:
         self.regularization_func = regularization_func
         self.regularization_grad = regularization_grad
         self.loss_func = loss_func
+        self.loss_grad = loss_grad
         self.loss_name = loss_name
         self.init_vals = init_vals
-        self.params = params
         self.param_grad = param_grad
         self.param_grad2 = param_grad2
         self.solver = solver
         self.bounds = bounds
-        self.lambdas = lambdas
         self.max_iter = max_iter
         self.momentum_weights = momentum_weights
         self.momentum_type = momentum_type
@@ -72,7 +68,7 @@ class func_ob:
         self.rand=rand
         self.scheduler = scheduler
         self.n_iter = 0
-        self.tol=tol
+        self.tol = tol
 
         self.grad = None
         self.converged = None
@@ -80,15 +76,28 @@ class func_ob:
         self.converged = None
         self.trained_vals = None
         self.objective_value = None
+
+        if type(lambdas) == float or type(lambdas) == int:
+            self.lambdas = dict()
+            for key in self.init_vals:
+                self.lambdas[key] = lambdas
+
+        else:
+            self.lambdas = lambdas
+
+        if len(self.lambdas) != len(self.init_vals):
+            raise ValueError('lambda and init vals len must match')
+        
+        self.sim_func = self.sim_func(**init_vals)
         
 
-    @property
-    def objective_func(self):
+    # @property
+    # def objective_func(self):
         
-        return partial(self.objective, 
-                        loss_func = self.loss_func, 
-                        reg_func = self.regularization_func, 
-                        sim_func = self.sim_func)
+    #     return partial(self.objective, 
+    #                     loss_func = self.loss_func, 
+    #                     reg_func = self.regularization_func, 
+    #                     sim_func = self.sim_func)
     
     def set_array_params(self):
 
@@ -147,7 +156,7 @@ class func_ob:
         self.n_iter += scipy_res.nfev
         self.objective_value = scipy_res.fun
 
-    def stoch_descent(self, train_data, verbose=None):
+    def stoch_descent(self, train_data, verbose = None):
         """ 
         Implement gradient descent for model tuning
         func must take: match, query, target
@@ -161,80 +170,76 @@ class func_ob:
 
         if len(self.init_vals) != len(self.params) or len(self.params)!= len(self.lambdas):
             raise ValueError('all input vectors must have same first dimension')
+        
+        self.trained_values = copy.deepcopy(self.init_vals)
 
         #set index at 0 and initial running grad so that we don't trigger early stop
         i=0
         self.running_grad = np.zeros(len(self.params)) + (self.running_grad_start/len(self.params))
 
-        while i<self.max_iter and sum(np.abs(self.running_grad))>self.tol:
+        while i < self.max_iter and sum(np.abs(self.running_grad)) > self.tol:
 
             #grab individual row
             if self.rand:
                 index = np.random.randint(train_data.shape[0])
             else:
-                index=i%train_data.shape[0]
-            
-            #estimate gradient and update values
-            if self.momentum_type == 'None':
-                
-                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                index = i % train_data.shape[0]
 
-                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                    print('bad grad')
-                    i+=1
-                    continue
+            #call predict method from Tuna Sim which updates gradients
+            pred_val = self.sim_func.predict(train_data.iloc[index]['query'], train_data.iloc[index]['target'])
 
-                self.init_vals -= self.lambdas * self.grad
-                
-                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
+            #update with the score of choice and funcOb's loss function
+            self.step(train_data.iloc[i]['score'], pred_val)
 
-            elif self.momentum_type == 'simple':
+            #update object based on results
+            self.n_iter += i
+            self.converged = self.running_grad < self.tol
 
-                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                    print('bad grad')
-                    i+=1
-                    continue
-
-                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
-                self.init_vals -= self.lambdas * self.running_grad
-
-            elif self.momentum_type == 'jonie':
-
-                self.init_vals -= self.lambdas * self.momentum_weights[0] * self.running_grad
-                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                    print('bad grad')
-                    i+=1
-                    continue
-                
-                self.init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
-                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
-            
-            
-            self.init_vals = np.clip(self.init_vals, self.min_bounds, self.max_bounds)
-
-            i+=1
             if verbose is not None:
-                if i%verbose == 0:
-                    print(f'completed {i} updates')
 
-            #update to epsilon values
-            if self.zero_grad_epsilon_boost != 0:
+                if self.n_iter % verbose == 0:
+                    print(f'completed {self.n_iter} iterations')
 
-                zero_inds = np.where(self.grad == 0)
-                self.epsilon[zero_inds] *= self.zero_grad_epsilon_boost
-                self.epsilon=np.clip(self.epsilon,0,10)
+    def step(self, score, pred_val):
+            
+        running_grad_temp = 0
 
-            if self.lambda_schedule is not None:
+        #estimate gradient and update values
+        if self.momentum_type == 'None':
 
-                self.lambdas = self.lambda_schedule(self.lambdas)
+            #go over first derivative grad only for the time being
+            for key, value in self.sim_func.grads1_score_agg.items():
 
-        #update object based on results
-        self.n_iter += i
-        self.converged = sum(self.running_grad)<self.tol
-        self.running_grad = self.running_grad 
-        self.trained_vals = self.init_vals
+                lambda_ = self.lambdas[key]
+                current = getattr(self.sim_func, key)
+                loss_grad = self.loss_grad(score - pred_val)
+                setattr(self.sim_func, key, current - lambda_ * loss_grad)
+            
+                running_grad_temp += value
+                
+            self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * running_grad_temp
+
+        elif self.momentum_type == 'simple':
+
+            self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+            if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
+                print('bad grad')
+                i+=1
+
+            self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
+            self.init_vals -= self.lambdas * self.running_grad
+
+        elif self.momentum_type == 'jonie':
+
+            self.init_vals -= self.lambdas * self.momentum_weights[0] * self.running_grad
+            self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+            if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
+                print('bad grad')
+                i+=1
+            
+            self.init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
+            self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
+
 
     def trained_func(self):
         if self.trained_vals is None:

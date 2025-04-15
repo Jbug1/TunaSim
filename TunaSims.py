@@ -4,6 +4,9 @@ import tools_fast
 from dataclasses import dataclass
 from math import prod
 
+import warnings
+warnings.filterwarnings("ignore")
+
 @dataclass
 class TunaSim:
 
@@ -98,7 +101,7 @@ class ExpandedTuna(TunaSim):
     mult_b: float = 1
     add_norm_int: float= 0
     add_norm_a: float= 1
-    add_norm_b: float = 0
+    add_norm_b: float = 1
     match_tolerance: float = 0.05
     sigmoid_score: bool = True
     ms2_da: float = 0.05
@@ -211,8 +214,8 @@ class ExpandedTuna(TunaSim):
         add = query + target
 
         #generate expanded terms
-        expanded_difs = self.dif_a * difs_abs ** self.dif_b
-        expanded_mults = self.mult_a * mults ** self.mult_b
+        expanded_difs = self.dif_a * np.power(difs_abs, self.dif_b)
+        expanded_mults = self.mult_a * np.power(mults, self.mult_b)
         add_norm = self.add_norm_a * np.power(add, self.add_norm_b)
 
         #calcualte gradient for similarity score params of dif and mult a(R -> R)
