@@ -29,16 +29,15 @@ class func_ob:
             name: str,
             sim_func: Callable,
             init_vals: dict,
-            param_grad: List[Callable] = None,
-            param_grad2: List[Callable] = None,
+            fixed_vals: dict = None,
             regularization_func: Callable = lambda x: 0,
             regularization_grad: Callable = None,
             loss_func: Callable = lambda x: x**2,
-            loss_grad: Callable = lambda x: 2 * x,
+            loss_grad: Callable = lambda x: -2 * x,
             regularization_name: str = '',
             loss_name: str = 'l2',
             solver: str = 'stoch',
-            lambdas: List[float] = 1,
+            lambdas: List[float] = 0.01,
             max_iter: int = 1e5,
             momentum_weights: List[float] = [0.8,0.2],
             momentum_type: str = 'None',
@@ -57,8 +56,6 @@ class func_ob:
         self.loss_grad = loss_grad
         self.loss_name = loss_name
         self.init_vals = init_vals
-        self.param_grad = param_grad
-        self.param_grad2 = param_grad2
         self.solver = solver
         self.bounds = bounds
         self.max_iter = max_iter
@@ -88,7 +85,20 @@ class func_ob:
         if len(self.lambdas) != len(self.init_vals):
             raise ValueError('lambda and init vals len must match')
         
-        self.sim_func = self.sim_func(**init_vals)
+        self.init_vals = init_vals
+        self.fixed_vals = fixed_vals
+        inits = dict()
+        inits.update(fixed_vals)
+        inits.update(init_vals)
+        self.sim_func = self.sim_func(**inits)
+
+        if sum(self.momentum_weights)!=1:
+            raise ValueError('sum of stop props must equal 1')
+        
+        if self.tol<0:
+            raise ValueError('early stop must be geq 0')
+        
+        self.trained_values = copy.deepcopy(self.init_vals)
         
 
     # @property
@@ -99,40 +109,8 @@ class func_ob:
     #                     reg_func = self.regularization_func, 
     #                     sim_func = self.sim_func)
     
-    def set_array_params(self):
-
-        if type(self.init_vals) == float:
-            self.init_vals = np.array([self.init_vals for i in range(len(self.params))])
-            self.init_vals_ = self.init_vals
-
-        else:
-            self.init_vals = np.array(self.init_vals)
-            self.init_vals_ = np.array(self.init_vals)
-
-        if type(self.lambdas) == float or type(self.lambdas) == int:
-            self.lambdas = np.array([self.lambdas for i in range(len(self.params))])
-
-        else:
-            self.lambdas = np.array(self.lambdas)
-
-        if type(self.epsilon) == float or type(self.epsilon) == int:
-            self.epsilon = np.array([self.epsilon for i in range(len(self.params))])
-
-        else:
-            self.epsilon = np.array(self.epsilon)
-
-        #set arrays for bounds
-        self.min_bounds = np.array([-np.inf for i in range(len(self.params))])
-        self.max_bounds = np.array([np.inf for i in range(len(self.params))])
-
-        for key, value in self.bounds.items():
-            ind = np.where(self.params == key)
-            self.min_bounds[ind] = value[0]
-            self.max_bounds[ind] = value[1]
     
     def fit(self, train_data, verbose=None):
-
-        self.set_array_params()
 
         if self.solver == 'stoch':
 
@@ -162,22 +140,11 @@ class func_ob:
         func must take: match, query, target
         """
 
-        if sum(self.momentum_weights)!=1:
-            raise ValueError('sum of stop props must equal 1')
-        
-        if self.tol<0:
-            raise ValueError('early stop must be geq 0')
-
-        if len(self.init_vals) != len(self.params) or len(self.params)!= len(self.lambdas):
-            raise ValueError('all input vectors must have same first dimension')
-        
-        self.trained_values = copy.deepcopy(self.init_vals)
-
         #set index at 0 and initial running grad so that we don't trigger early stop
         i=0
-        self.running_grad = np.zeros(len(self.params)) + (self.running_grad_start/len(self.params))
+        self.running_grad = self.running_grad_start
 
-        while i < self.max_iter and sum(np.abs(self.running_grad)) > self.tol:
+        while i < self.max_iter and self.running_grad > self.tol:
 
             #grab individual row
             if self.rand:
@@ -187,6 +154,8 @@ class func_ob:
 
             #call predict method from Tuna Sim which updates gradients
             pred_val = self.sim_func.predict(train_data.iloc[index]['query'], train_data.iloc[index]['target'])
+
+            print(pred_val)
 
             #update with the score of choice and funcOb's loss function
             self.step(train_data.iloc[i]['score'], pred_val)
@@ -203,43 +172,45 @@ class func_ob:
     def step(self, score, pred_val):
             
         running_grad_temp = 0
+        for key in self.init_vals:
 
-        #estimate gradient and update values
-        if self.momentum_type == 'None':
+            value = self.sim_func.grads1_score_agg[key]
 
-            #go over first derivative grad only for the time being
-            for key, value in self.sim_func.grads1_score_agg.items():
+            print(key, value)
 
-                lambda_ = self.lambdas[key]
-                current = getattr(self.sim_func, key)
-                loss_grad = self.loss_grad(score - pred_val)
-                setattr(self.sim_func, key, current - lambda_ * loss_grad)
-            
-                running_grad_temp += value
+            running_grad_temp += abs(value)
+
+            lambda_ = self.lambdas[key]
+            current = getattr(self.sim_func, key)
+            loss_grad = self.loss_grad(score - pred_val)
+            print(f'loss grad: {loss_grad}')
+            print(f'step {lambda_ * loss_grad * value}')
+
+            if self.momentum_type == 'None':
+                setattr(self.sim_func, key, current - lambda_ * loss_grad * value)
+    
+            elif self.momentum_type == 'simple':
+
+                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
+                    print('bad grad')
+                    i+=1
+
+                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
+                self.init_vals -= self.lambdas * self.running_grad
+
+            elif self.momentum_type == 'jonie':
+
+                self.init_vals -= self.lambdas * self.momentum_weights[0] * self.running_grad
+                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
+                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
+                    print('bad grad')
+                    i+=1
                 
-            self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * running_grad_temp
+                self.init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
+                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
 
-        elif self.momentum_type == 'simple':
-
-            self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-            if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                print('bad grad')
-                i+=1
-
-            self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
-            self.init_vals -= self.lambdas * self.running_grad
-
-        elif self.momentum_type == 'jonie':
-
-            self.init_vals -= self.lambdas * self.momentum_weights[0] * self.running_grad
-            self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-            if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                print('bad grad')
-                i+=1
-            
-            self.init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
-            self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
-
+        self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * running_grad_temp
 
     def trained_func(self):
         if self.trained_vals is None:

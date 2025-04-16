@@ -101,7 +101,7 @@ class ExpandedTuna(TunaSim):
     mult_b: float = 1
     add_norm_int: float= 0
     add_norm_a: float= 1
-    add_norm_b: float = 1
+    add_norm_b: float = 0
     match_tolerance: float = 0.05
     sigmoid_score: bool = True
     ms2_da: float = 0.05
@@ -174,14 +174,14 @@ class ExpandedTuna(TunaSim):
         self.unweighted = True
         for trigger in triggers:
             for side in ['query','target']:
-                setattr(self, f'{side}_{trigger}', False)
+                setattr(self, f'{trigger}_{side}', False)
                 for variable in ['int','a','b','c']:
 
                     if getattr(self, f'{side}_{trigger}_{variable}') != 0:
 
                         #set the proper side to let us know to compute values and track derivatives
                         #set unweighted to false if at least one is true
-                        setattr(self, f'{side}_{trigger}', True)
+                        setattr(self, f'{trigger}_{side}', True)
                         self.unweighted = False
 
 
@@ -283,8 +283,8 @@ class ExpandedTuna(TunaSim):
             return
 
         #get reweight based on raw mz values
-        if self.query_mz:
-            self.query_mz_weights = self.smooth_reweight('mz_query', 
+        if self.mz_query:
+            self.query_mz_weights = self.smooth_reweight('query_mz', 
                                                          query[:,0],
                                                         self.query_mz_int,
                                                         self.query_mz_a,
@@ -292,8 +292,8 @@ class ExpandedTuna(TunaSim):
                                                         self.query_mz_c,
                                                         )
             
-        if self.target_mz:           
-            self.target_mz_weights = self.smooth_reweight('mz_target',
+        if self.mz_target:           
+            self.target_mz_weights = self.smooth_reweight('target_mz',
                                                           target[:,0], 
                                                             self.target_mz_int,
                                                             self.target_mz_a,
@@ -302,8 +302,8 @@ class ExpandedTuna(TunaSim):
                                                             )
         
         #grab weights for spectra as precursor offset
-        if self.query_mz_offset:
-            self.query_mz_offset_weights = self.smooth_reweight('mz_offset_query',
+        if self.mz_offset_query:
+            self.query_mz_offset_weights = self.smooth_reweight('query_mz_offset',
                                                                 query[:,0] - self.prec_query, 
                                                                 self.query_mz_offset_int,
                                                                 self.query_mz_offset_a,
@@ -311,8 +311,8 @@ class ExpandedTuna(TunaSim):
                                                                 self.query_mz_offset_c,
                                                                 )
             
-        if self.target_mz_offset:   
-            self.target_mz_offset_weights = self.smooth_reweight('mz_offset_target',
+        if self.mz_offset_target:   
+            self.target_mz_offset_weights = self.smooth_reweight('target_mz_offset',
                                                                  target[:,0] - self.prec_target, 
                                                                  self.target_mz_offset_int,
                                                                 self.target_mz_offset_a,
@@ -321,8 +321,8 @@ class ExpandedTuna(TunaSim):
                                                                 )
         
         #as a function of intensities
-        if self.query_intensity:
-            self.query_intensity_weights = self.smooth_reweight('intensity_query',
+        if self.intensity_query:
+            self.query_intensity_weights = self.smooth_reweight('query_intensity',
                                                                 query[:,1], 
                                                                 self.query_intensity_int,
                                                                 self.query_intensity_a,
@@ -330,8 +330,8 @@ class ExpandedTuna(TunaSim):
                                                                 self.query_intensity_c,
                                                             )
             
-        if self.target_intensity:
-            self.target_intensity_weights = self.smooth_reweight('intensity_target',
+        if self.intensity_target:
+            self.target_intensity_weights = self.smooth_reweight('target_intensity',
                                                                 target[:,1],
                                                                 self.target_intensity_int,
                                                                 self.target_intensity_a,
@@ -340,8 +340,8 @@ class ExpandedTuna(TunaSim):
                                                             )
         
         #as a function of normalized intensities
-        if self.query_normalized_intensity:
-            self.query_normalized_intensity_weights = self.smooth_reweight('normalized_intensity_query',
+        if self.normalized_intensity_query:
+            self.query_normalized_intensity_weights = self.smooth_reweight('query_normalized_intensity',
                                                                            query[:,1] /np.sum(query[:,1]), 
                                                                             self.query_normalized_intensity_int,
                                                                             self.query_normalized_intensity_a,
@@ -349,8 +349,8 @@ class ExpandedTuna(TunaSim):
                                                                             self.query_normalized_intensity_c,
                                                                             )
             
-        if self.target_normalized_intensity:  
-            self.target_normalized_intensity_weights = self.smooth_reweight('normalized_intensity_target',
+        if self.normalized_intensity_target:  
+            self.target_normalized_intensity_weights = self.smooth_reweight('target_normalized_intensity',
                                                                             target[:,1] / np.sum(target[:,1]), 
                                                                             self.target_normalized_intensity_int,
                                                                             self.target_normalized_intensity_a,
@@ -358,8 +358,8 @@ class ExpandedTuna(TunaSim):
                                                                             self.target_normalized_intensity_c,
                                                                             )
 
-        if self.query_entropy:
-            self.query_entropy_weights = self.smooth_reweight('entropy_query',
+        if self.entropy_query:
+            self.query_entropy_weights = self.smooth_reweight('query_entropy',
                                                               np.zeros(len(query)) + scipy.stats.entropy(query[:,1]), 
                                                               self.query_entropy_int,
                                                               self.query_entropy_a,
@@ -367,8 +367,8 @@ class ExpandedTuna(TunaSim):
                                                               self.query_entropy_c,
                                                               )
             
-        if self.target_entropy:
-            self.target_entropy_weights = self.smooth_reweight('entropy_target',
+        if self.entropy_target:
+            self.target_entropy_weights = self.smooth_reweight('target_entropy',
                                                                np.zeros(len(target)) + scipy.stats.entropy(target[:,1]), 
                                                                self.target_entropy_int,
                                                                self.target_entropy_a,
