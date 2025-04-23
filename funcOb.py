@@ -144,7 +144,7 @@ class func_ob:
         i=0
         self.running_grad = self.running_grad_start
 
-        while i < self.max_iter and self.running_grad > self.tol:
+        while i < self.max_iter and not self.converged:
 
             #grab individual row
             if self.rand:
@@ -155,13 +155,12 @@ class func_ob:
             #call predict method from Tuna Sim which updates gradients
             pred_val = self.sim_func.predict(train_data.iloc[index]['query'], train_data.iloc[index]['target'])
 
-            print(pred_val)
-
             #update with the score of choice and funcOb's loss function
-            self.step(train_data.iloc[i]['score'], pred_val)
+            self.step(train_data.iloc[i]['score'], pred_val)    
 
             #update object based on results
-            self.n_iter += i
+            self.n_iter += 1
+            i+=1
             self.converged = self.running_grad < self.tol
 
             if verbose is not None:
@@ -172,22 +171,34 @@ class func_ob:
     def step(self, score, pred_val):
             
         running_grad_temp = 0
+        loss_grad = self.loss_grad(score - pred_val)
         for key in self.init_vals:
 
             value = self.sim_func.grads1_score_agg[key]
-
-            print(key, value)
 
             running_grad_temp += abs(value)
 
             lambda_ = self.lambdas[key]
             current = getattr(self.sim_func, key)
-            loss_grad = self.loss_grad(score - pred_val)
-            print(f'loss grad: {loss_grad}')
-            print(f'step {lambda_ * loss_grad * value}')
 
             if self.momentum_type == 'None':
-                setattr(self.sim_func, key, current - lambda_ * loss_grad * value)
+
+                updated = current - lambda_ * loss_grad * value  
+                
+                if key in self.bounds:
+                    bounds = self.bounds[key]
+                    print(key, current, min(max(bounds[0], updated), bounds[1]))
+                    setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
+
+                else:
+                    print(key, current, updated)
+                    setattr(self.sim_func, key, updated)
+
+                if np.isnan(current - lambda_ * loss_grad * value):
+                    print(score)
+                    print(yool)
+
+                
     
             elif self.momentum_type == 'simple':
 

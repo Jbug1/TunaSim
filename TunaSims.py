@@ -107,6 +107,7 @@ class ExpandedTuna(TunaSim):
     ms2_da: float = 0.05
     ms2_ppm: float = None
     weight_combine: str = 'add'
+    zero_clip_reweight: bool = True
 
     def __post_init__(self):
 
@@ -142,21 +143,40 @@ class ExpandedTuna(TunaSim):
         give new weightings based on array values and passed parameters
         '''
 
+        #be mindful of which inds have a gradient if we are clipping
+        if self.zero_clip_reweight:
+
+            res = intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
+            zero_inds = np.where(res <= 0)[0]
+            res[zero_inds] = 0
+
+        else:
+            res = intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
+            zero_inds = []
+        
         if self.set_grad1:
 
             if intercept != 0:
-                self.grads1_int_param[f'{name}_int'] = np.ones(len(array))
+                grad = np.ones(len(array))
+                grad[zero_inds] = 0
+                self.grads1_int_param[f'{name}_int'] = grad
             
             if a != 0:
-                self.grads1_int_param[f'{name}_a'] = array
+                grad = array
+                grad[zero_inds] = 0
+                self.grads1_int_param[f'{name}_a'] = grad
 
             if b != 0:
-                self.grads1_int_param[f'{name}_b'] = array ** 2
+                grad = np.power(array, 2)
+                grad[zero_inds] = 0
+                self.grads1_int_param[f'{name}_b'] = grad
 
             if c != 0:
-                self.grads1_int_param[f'{name}_c'] = array ** 3
+                grad = np.power(array, 3)
+                grad[zero_inds] = 0
+                self.grads1_int_param[f'{name}_c'] = grad
         
-        return intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
+        return res
 
     def set_weight_triggers(self):
         ''' 
@@ -186,7 +206,6 @@ class ExpandedTuna(TunaSim):
 
 
     def predict(self, query, target):
-
         ''' 
         this function will yield a [0,1] interval similarity prediction
         predict also sets the values of potentially relevant gradint calculation parameters,
@@ -225,16 +244,23 @@ class ExpandedTuna(TunaSim):
         self.grads1_agg_int['dif_b'] = self.dif_a * np.sum((difs_abs ** self.dif_b) * np.log(difs_abs) / add_norm)
         self.grads1_agg_int['mult_b'] = self.mult_a * np.sum((mults ** self.mult_b) * np.log(mults) / add_norm)
         
-        self.grads1_agg_int['add_a'] = np.sum(-(expanded_difs + expanded_mults)/ self.add_norm_a**2 * add)
-        self.grads1_agg_int['add_b'] = np.sum(-((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a)
+        self.grads1_agg_int['add_norm_a'] = np.sum(-(expanded_difs + expanded_mults)/ self.add_norm_a**2 * add)
+        self.grads1_agg_int['add_norm_b'] = np.sum(-((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a)
 
         #very messy cacluation of terms
         #going for efficiency with intermediate results here
+
+        #slight adjustment to take care of infinite grads...these result from no difference
+        #and therefore will be set to 0 anyways
         dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
-        dif_grad_t = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * -difs
+        dif_grad_q[np.isnan(dif_grad_q)] = 0
+        dif_grad_t = -dif_grad_q
+
         mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
+        mult_grad[np.isnan(mult_grad)] = 0
         mult_grad_q = mult_grad * target
         mult_grad_t = mult_grad * query
+
         add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
         second_term = (expanded_difs + expanded_mults) * add_grad
         add_norm_square = np.power(add_norm, 2)
