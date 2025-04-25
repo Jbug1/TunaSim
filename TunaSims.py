@@ -219,6 +219,10 @@ class ExpandedTuna(TunaSim):
                                             ms2_da = self.ms2_da,
                                             ms2_ppm = self.ms2_ppm)
         
+        self.matched = matched
+        self.query = query
+        self.target = target
+        
         query = matched[:,:2]
         target = matched[:,[0,2]]
          
@@ -236,6 +240,10 @@ class ExpandedTuna(TunaSim):
         expanded_difs = self.dif_a * np.power(difs_abs, self.dif_b)
         expanded_mults = self.mult_a * np.power(mults, self.mult_b)
         add_norm = self.add_norm_a * np.power(add, self.add_norm_b)
+
+        self.expanded_difs = expanded_difs
+        self.expanded_mults = expanded_mults
+        self.add_norm = add_norm
 
         #calcualte gradient for similarity score params of dif and mult a(R -> R)
         self.grads1_agg_int['dif_a'] = np.sum(expanded_difs / (self.dif_a * add_norm))
@@ -265,9 +273,15 @@ class ExpandedTuna(TunaSim):
         second_term = (expanded_difs + expanded_mults) * add_grad
         add_norm_square = np.power(add_norm, 2)
 
-        #gradients w.r.t. query and target...for passing down reweight param grads
+        #gradients of score w.r.t. query and target...for passing down reweight param grads
         query_grad = ((dif_grad_q + mult_grad_q) * add_norm - second_term) / add_norm_square
         target_grad = ((dif_grad_t + mult_grad_t) * add_norm - second_term) / add_norm_square
+
+        if self.sigmoid_score:
+            score = self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
+            sig_grad = score * (1 - score)
+        else:
+            score = np.sum((expanded_difs + expanded_mults) / add_norm)
 
         #final step is to calculate grads of score output w.r.t. all reweight params
         for key, value in self.grads1_int_param.items():
@@ -277,26 +291,22 @@ class ExpandedTuna(TunaSim):
             else:
                 side = target_grad
 
+            score_grad = np.sum(value * side)
             #chain rule f'(g(x)) is grad of query or target
             #g'(x) is grad w.r.t. whichever parameter
             if self.sigmoid_score:
-                sig_grad = self.sigmoid(np.sum(value * side))
-                self.grads1_score_agg[key] = sig_grad * (1 - sig_grad)
+                self.grads1_score_agg[key] = sig_grad * score_grad
             else:
-                self.grads1_score_agg[key] = np.sum(value * side)
+                self.grads1_score_agg[key] = score_grad
 
         if self.sigmoid_score:
             for key, value in self.grads1_agg_int.items():
-
-                    sig_grad = self.sigmoid(self.grads1_agg_int[key])
-                    self.grads1_score_agg[key] =  sig_grad * (1 - sig_grad)
+                    
+                    self.grads1_score_agg[key] =  sig_grad * value
         else:
             self.grads1_score_agg.update(self.grads1_agg_int)
 
-        if self.sigmoid_score:
-            return self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
-        else:
-            return np.sum((expanded_difs + expanded_mults) / add_norm)
+        return score
 
 
     def set_reweighted_intensity(self, query, target):

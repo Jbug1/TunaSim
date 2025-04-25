@@ -33,7 +33,7 @@ class func_ob:
             regularization_func: Callable = lambda x: 0,
             regularization_grad: Callable = None,
             loss_func: Callable = lambda x: x**2,
-            loss_grad: Callable = lambda x: -2 * x,
+            loss_grad: Callable = lambda x: 2 * x,
             regularization_name: str = '',
             loss_name: str = 'l2',
             solver: str = 'stoch',
@@ -153,10 +153,13 @@ class func_ob:
                 index = i % train_data.shape[0]
 
             #call predict method from Tuna Sim which updates gradients
-            pred_val = self.sim_func.predict(train_data.iloc[index]['query'], train_data.iloc[index]['target'])
+            self.pred_val = self.sim_func.predict(train_data.iloc[index]['query'], train_data.iloc[index]['target'])
+
+            # if abs(train_data.iloc[index]['score'] - self.pred_val) > 0.5:
+            #      print(index, train_data.iloc[index]['score'], self.pred_val, self.sim_func.mult_a, self.sim_func.add_norm_b)
 
             #update with the score of choice and funcOb's loss function
-            self.step(train_data.iloc[i]['score'], pred_val)    
+            self.step(train_data.iloc[index]['score'], self.pred_val)    
 
             #update object based on results
             self.n_iter += 1
@@ -167,11 +170,14 @@ class func_ob:
 
                 if self.n_iter % verbose == 0:
                     print(f'completed {self.n_iter} iterations')
+                    print(self.sim_func.mult_a)
+                    print(self.sim_func.add_norm_a)
+                    print(self.sim_func.add_norm_b)
 
     def step(self, score, pred_val):
             
         running_grad_temp = 0
-        loss_grad = self.loss_grad(score - pred_val)
+        loss_grad = self.loss_grad(pred_val - score)
         for key in self.init_vals:
 
             value = self.sim_func.grads1_score_agg[key]
@@ -187,18 +193,14 @@ class func_ob:
                 
                 if key in self.bounds:
                     bounds = self.bounds[key]
-                    print(key, current, min(max(bounds[0], updated), bounds[1]))
                     setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
 
                 else:
-                    print(key, current, updated)
                     setattr(self.sim_func, key, updated)
 
                 if np.isnan(current - lambda_ * loss_grad * value):
                     print(score)
                     print(yool)
-
-                
     
             elif self.momentum_type == 'simple':
 
