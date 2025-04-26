@@ -70,7 +70,6 @@ class func_ob:
         self.grad = None
         self.converged = None
         self.running_grad = None
-        self.converged = None
         self.trained_vals = None
         self.objective_value = None
 
@@ -111,6 +110,9 @@ class func_ob:
     
     
     def fit(self, train_data, verbose=None):
+
+        self.converged = False
+        self.running_grad = self.running_grad_start
 
         if self.solver == 'stoch':
 
@@ -173,6 +175,9 @@ class func_ob:
                     print(self.sim_func.mult_a)
                     print(self.sim_func.add_norm_a)
                     print(self.sim_func.add_norm_b)
+                    print(self.sim_func.query_normalized_intensity_a)
+                    print(self.sim_func.target_normalized_intensity_a)
+                    print(self.running_grad)
 
     def step(self, score, pred_val):
             
@@ -182,7 +187,7 @@ class func_ob:
 
             value = self.sim_func.grads1_score_agg[key]
 
-            running_grad_temp += abs(value)
+            running_grad_temp += abs(value * loss_grad)
 
             lambda_ = self.lambdas[key]
             current = getattr(self.sim_func, key)
@@ -223,7 +228,7 @@ class func_ob:
                 self.init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
                 self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
 
-        self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * running_grad_temp
+        self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * running_grad_temp/len(self.init_vals)
 
     def trained_func(self):
         if self.trained_vals is None:
