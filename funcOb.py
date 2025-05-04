@@ -30,9 +30,7 @@ class func_ob:
             sim_func: Callable,
             init_vals: dict,
             fixed_vals: dict = None,
-            regularization_func: Callable = lambda x: 0,
-            regularization_grad: Callable = None,
-            loss_func: Callable = lambda x: x**2,
+            regularization_grad: Callable = lambda x: 0,
             loss_grad: Callable = lambda x: 2 * x,
             regularization_name: str = '',
             loss_name: str = 'l2',
@@ -50,9 +48,7 @@ class func_ob:
         self.name = name
         self.sim_func = sim_func
         self.regularization_name = regularization_name
-        self.regularization_func = regularization_func
         self.regularization_grad = regularization_grad
-        self.loss_func = loss_func
         self.loss_grad = loss_grad
         self.loss_name = loss_name
         self.init_vals = init_vals
@@ -172,17 +168,15 @@ class func_ob:
 
                 if self.n_iter % verbose == 0:
                     print(f'completed {self.n_iter} iterations')
-                    print(self.sim_func.mult_a)
-                    print(self.sim_func.add_norm_a)
-                    print(self.sim_func.add_norm_b)
-                    print(self.sim_func.query_normalized_intensity_a)
-                    print(self.sim_func.target_normalized_intensity_a)
-                    print(self.running_grad)
 
     def step(self, score, pred_val):
             
+        #collector for running grad across all variables
         running_grad_temp = 0
+
+        #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val - score)
+        
         for key in self.init_vals:
 
             value = self.sim_func.grads1_score_agg[key]
@@ -192,9 +186,12 @@ class func_ob:
             lambda_ = self.lambdas[key]
             current = getattr(self.sim_func, key)
 
+            #get gradient w.r.t. regualrization function
+            reg_grad = self.regularization_grad(current)
+
             if self.momentum_type == 'None':
 
-                updated = current - lambda_ * loss_grad * value  
+                updated = current - lambda_ * (loss_grad + reg_grad) * value  
                 
                 if key in self.bounds:
                     bounds = self.bounds[key]
@@ -203,8 +200,8 @@ class func_ob:
                 else:
                     setattr(self.sim_func, key, updated)
 
-                if np.isnan(current - lambda_ * loss_grad * value):
-                    print(score)
+                if np.isnan(updated):
+                    print(key, current, updated)
                     print(yool)
     
             elif self.momentum_type == 'simple':
