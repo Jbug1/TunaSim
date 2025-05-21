@@ -5,6 +5,8 @@ from typing import Callable, List
 from scipy.optimize import minimize as mini
 from scipy.optimize import approx_fprime as approx
 import copy
+from collections import Counter
+import pandas as pd
 
 
 class func_ob:
@@ -43,7 +45,8 @@ class func_ob:
             rand: bool = False,
             scheduler: Callable = None,
             bounds: dict = None,
-            tol: float = 0.0
+            tol: float = 0.0,
+            balance_classes: bool = True
     ):
         self.name = name
         self.sim_func = sim_func
@@ -62,6 +65,7 @@ class func_ob:
         self.scheduler = scheduler
         self.n_iter = 0
         self.tol = tol
+        self.balance_classes = balance_classes
 
         self.grad = None
         self.converged = None
@@ -116,6 +120,8 @@ class func_ob:
 
         else:
             self.scipy_solver_estimate(train_data)
+
+        self.trained_vals = self.init_vals
     
     def scipy_solver_estimate(self, train_data, warm_start=False):
 
@@ -142,6 +148,11 @@ class func_ob:
         i=0
         self.running_grad = self.running_grad_start
 
+        if self.balance_classes:
+
+            train_data = self.balanced_upsample(train_data)
+            train_data = train_data.sample(frac = 1)
+
         while i < self.max_iter and not self.converged:
 
             #grab individual row
@@ -157,7 +168,7 @@ class func_ob:
             #      print(index, train_data.iloc[index]['score'], self.pred_val, self.sim_func.mult_a, self.sim_func.add_norm_b)
 
             #update with the score of choice and funcOb's loss function
-            self.step(train_data.iloc[index]['score'], self.pred_val)    
+            self.step(train_data.iloc[index]['score'], self.pred_val, i)    
 
             #update object based on results
             self.n_iter += 1
@@ -169,13 +180,29 @@ class func_ob:
                 if self.n_iter % verbose == 0:
                     print(f'completed {self.n_iter} iterations')
 
-    def step(self, score, pred_val):
+    def balanced_upsample(self, data):
+    
+        counts = Counter(data['score']).most_common()
+
+        wholes = 1 / (counts[1][1] / (counts[0][1] )) // 1
+        partials = 1 / (counts[1][1] / (counts[0][1])) % 1
+
+        minorities = data[data['score'] == counts[1][0]]
+        majorities = data[data['score'] == counts[0][0]]
+        counts = Counter(data['score']).most_common()
+
+        return pd.concat([majorities] + [minorities for i in range(int(wholes))]+ [minorities[:int(partials * len(minorities))]])
+
+    def step(self, score, pred_val, i):
             
         #collector for running grad across all variables
         running_grad_temp = 0
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val - score)
+    
+        if np.isnan(loss_grad):
+            print('yabaddo', pred_val)
         
         for key in self.init_vals:
 
@@ -200,6 +227,8 @@ class func_ob:
                 else:
                     setattr(self.sim_func, key, updated)
 
+                # if i > self.max_iter - 4:
+                #     print(key, current, updated)
                 if np.isnan(updated):
                     print(key, current, updated)
                     print(yool)
@@ -232,6 +261,5 @@ class func_ob:
             raise ValueError('function has not been trained')
 
         else:
-            kwargs = {k:v for k,v in zip(self.params,self.trained_vals)}
-            return partial(self.sim_func,**kwargs)
+            return partial(self.sim_func,**self.trained_vals)
         

@@ -7,6 +7,7 @@ from math import prod
 import warnings
 warnings.filterwarnings("ignore")
 
+
 @dataclass
 class TunaSim:
 
@@ -236,6 +237,10 @@ class ExpandedTuna(TunaSim):
         mults = query * target
         add = query + target
 
+        self.difs = difs
+        self.mults = mults
+        self.add = add
+
         #generate expanded terms
         expanded_difs = self.dif_a * np.power(difs_abs, self.dif_b)
         expanded_mults = self.mult_a * np.power(mults, self.mult_b)
@@ -243,39 +248,61 @@ class ExpandedTuna(TunaSim):
 
         self.expanded_difs = expanded_difs
         self.expanded_mults = expanded_mults
+        self.mults = mults
         self.add_norm = add_norm
 
         #calcualte gradient for similarity score params of dif and mult a(R -> R)
         self.grads1_agg_int['dif_a'] = np.sum(expanded_difs / (self.dif_a * add_norm))
         self.grads1_agg_int['mult_a'] = np.sum(expanded_mults / (self.mult_a * add_norm))
 
-        self.grads1_agg_int['dif_b'] = self.dif_a * np.sum((difs_abs ** self.dif_b) * np.log(difs_abs) / add_norm)
-        self.grads1_agg_int['mult_b'] = self.mult_a * np.sum((mults ** self.mult_b) * np.log(mults) / add_norm)
+        dif_b = np.sum((expanded_difs / add_norm) * np.log(difs_abs))
+        dif_b = np.nan_to_num(dif_b, nan=0.0, posinf=0.0, neginf=0.0)
+        self.grads1_agg_int['dif_b'] = dif_b
+
+        mult_b = (expanded_mults / add_norm) * np.log(mults)
+        mult_b = np.nan_to_num(mult_b, nan=0.0, posinf=0.0, neginf=0.0)
+        self.grads1_agg_int['mult_b'] = np.sum(mult_b)
         
         self.grads1_agg_int['add_norm_a'] = np.sum(-(expanded_difs + expanded_mults)/ self.add_norm_a**2 * add)
-        self.grads1_agg_int['add_norm_b'] = np.sum(-((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a)
 
+        add_b = np.sum(-((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a)
+        add_b = np.nan_to_num(add_b, nan=0.0, posinf=0.0, neginf=0.0)
+        self.grads1_agg_int['add_norm_b'] = add_b
         #very messy cacluation of terms
         #going for efficiency with intermediate results here
 
         #slight adjustment to take care of infinite grads...these result from no difference
         #and therefore will be set to 0 anyways
         dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
-        dif_grad_q[np.isnan(dif_grad_q)] = 0
+        dif_grad_q = np.nan_to_num(dif_grad_q, nan=0.0, posinf=0.0, neginf=0.0)
         dif_grad_t = -dif_grad_q
 
+        self.dif_grad_q = dif_grad_q
+
         mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
-        mult_grad[np.isnan(mult_grad)] = 0
+        mult_grad = np.nan_to_num(mult_grad, nan=0.0, posinf=0.0, neginf=0.0)
         mult_grad_q = mult_grad * target
         mult_grad_t = mult_grad * query
 
+        self.mult_grad = mult_grad
+        self.mult_grad_q = mult_grad_q
+
         add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
+        add_grad = np.nan_to_num(add_grad, nan=0.0, posinf=0.0, neginf=0.0)
         second_term = (expanded_difs + expanded_mults) * add_grad
         add_norm_square = np.power(add_norm, 2)
 
+        self.second_term = second_term
+        self.add_grad = add_grad
+
         #gradients of score w.r.t. query and target...for passing down reweight param grads
         query_grad = ((dif_grad_q + mult_grad_q) * add_norm - second_term) / add_norm_square
+        query_grad = np.nan_to_num(query_grad, nan=0.0, posinf=0.0, neginf=0.0)
         target_grad = ((dif_grad_t + mult_grad_t) * add_norm - second_term) / add_norm_square
+        target_grad = np.nan_to_num(target_grad, nan=0.0, posinf=0.0, neginf=0.0)
+
+        self.query_grad = query_grad
+        self.target_grad = target_grad
 
         if self.sigmoid_score:
             score = self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
@@ -292,6 +319,8 @@ class ExpandedTuna(TunaSim):
                 side = target_grad
 
             score_grad = np.sum(value * side)
+            if np.any(np.isnan(score_grad)) or np.any(np.isinf(score_grad)):
+                print(key)
             #chain rule f'(g(x)) is grad of query or target
             #g'(x) is grad w.r.t. whichever parameter
             if self.sigmoid_score:
