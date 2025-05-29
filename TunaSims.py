@@ -54,50 +54,49 @@ class ExpandedTuna(TunaSim):
     covers harmonic mean, prob symetric chi square, lorentzian, bhattacharya, matusita
     '''
 
-    query_mz_int: float = 0         
-    query_mz_a: float = 0
-    query_mz_b: float = 0
-    query_mz_c: float = 0
-    target_mz_int: float = 0
-    target_mz_a: float = 0
-    target_mz_b: float = 0
-    target_mz_c: float = 0
-    query_mz_offset_int: float = 0
-    query_mz_offset_a: float = 0
-    query_mz_offset_b: float = 0
-    query_mz_offset_c: float = 0
-    target_mz_offset_int: float = 0
-    target_mz_offset_a: float = 0
-    target_mz_offset_b: float = 0
-    target_mz_offset_c: float = 0
-    query_intensity_int: float = 0
-    query_intensity_a: float = 0
-    query_intensity_b: float = 0
-    query_intensity_c: float = 0
-    target_intensity_int: float = 0
-    target_intensity_a: float = 0
-    target_intensity_b: float = 0
-    target_intensity_c: float = 0
-    query_normalized_intensity_int: float = 0
-    query_normalized_intensity_a: float = 0
-    query_normalized_intensity_b: float = 0
-    query_normalized_intensity_c: float = 0
-    target_normalized_intensity_int: float = 0
-    target_normalized_intensity_a: float = 0
-    target_normalized_intensity_b: float = 0
-    target_normalized_intensity_c: float = 0
-    query_entropy_int: float = 0
-    query_entropy_a: float = 0
-    query_entropy_b: float = 0
-    query_entropy_c: float = 0
-    target_entropy_int: float = 0
-    target_entropy_a: float = 0
-    target_entropy_b: float = 0
-    target_entropy_c: float = 0
-    dif_int: float = 0
+    query_mz_int: float = None         
+    query_mz_a: float = None
+    query_mz_b: float = None
+    query_mz_c: float = None
+    target_mz_int: float = None
+    target_mz_a: float = None
+    target_mz_b: float = None
+    target_mz_c: float = None
+    query_mz_offset_int: float = None
+    query_mz_offset_a: float = None
+    query_mz_offset_b: float = None
+    query_mz_offset_c: float = None
+    target_mz_offset_int: float = None
+    target_mz_offset_a: float = None
+    target_mz_offset_b: float = None
+    target_mz_offset_c: float = None
+    query_intensity_int: float = None
+    query_intensity_a: float = None
+    query_intensity_b: float = None
+    query_intensity_c: float = None
+    target_intensity_int: float = None
+    target_intensity_a: float = None
+    target_intensity_b: float = None
+    target_intensity_c: float = None
+    query_normalized_intensity_int: float = None
+    query_normalized_intensity_a: float = None
+    query_normalized_intensity_b: float = None
+    query_normalized_intensity_c: float = None
+    target_normalized_intensity_int: float = None
+    target_normalized_intensity_a: float = None
+    target_normalized_intensity_b: float = None
+    target_normalized_intensity_c: float = None
+    query_entropy_int: float = None
+    query_entropy_a: float = None
+    query_entropy_b: float = None
+    query_entropy_c: float = None
+    target_entropy_int: float = None
+    target_entropy_a: float = None
+    target_entropy_b: float = None
+    target_entropy_c: float = None
+    sim_int: float = 0
     dif_a: float = 0
     dif_b: float= 1
-    mult_int: float = 0
     mult_a: float = 0
     mult_b: float = 1
     add_norm_int: float= 0
@@ -108,7 +107,8 @@ class ExpandedTuna(TunaSim):
     ms2_da: float = 0.05
     ms2_ppm: float = None
     weight_combine: str = 'add'
-    zero_clip_reweight: bool = True
+    zero_clip_reweight: bool = True,
+
 
     def __post_init__(self):
 
@@ -147,32 +147,32 @@ class ExpandedTuna(TunaSim):
         #be mindful of which inds have a gradient if we are clipping
         if self.zero_clip_reweight:
 
-            res = intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
+            res = (intercept or 0) + (a or 0) * array + (b or 0) * np.power(array,2) + (c or 0) * np.power(array,3)
             zero_inds = np.where(res <= 0)[0]
             res[zero_inds] = 0
 
         else:
-            res = intercept + a * array + b * np.power(array,2) + c * np.power(array,3)
+            res = (intercept or 0) + (a or 0) * array + (b or 0) * np.power(array,2) + (c or 0) * np.power(array,3)
             zero_inds = []
         
         if self.set_grad1:
 
-            if intercept != 0:
+            if intercept is not None:
                 grad = np.ones(len(array))
                 grad[zero_inds] = 0
                 self.grads1_int_param[f'{name}_int'] = grad
             
-            if a != 0:
+            if a is not None:
                 grad = array
                 grad[zero_inds] = 0
                 self.grads1_int_param[f'{name}_a'] = grad
 
-            if b != 0:
+            if b is not None:
                 grad = np.power(array, 2)
                 grad[zero_inds] = 0
                 self.grads1_int_param[f'{name}_b'] = grad
 
-            if c != 0:
+            if c is not None:
                 grad = np.power(array, 3)
                 grad[zero_inds] = 0
                 self.grads1_int_param[f'{name}_c'] = grad
@@ -198,7 +198,7 @@ class ExpandedTuna(TunaSim):
                 setattr(self, f'{trigger}_{side}', False)
                 for variable in ['int','a','b','c']:
 
-                    if getattr(self, f'{side}_{trigger}_{variable}') != 0:
+                    if getattr(self, f'{side}_{trigger}_{variable}') is not None:
 
                         #set the proper side to let us know to compute values and track derivatives
                         #set unweighted to false if at least one is true
@@ -206,7 +206,7 @@ class ExpandedTuna(TunaSim):
                         self.unweighted = False
 
 
-    def predict(self, query, target):
+    def predict(self, query, target, prec_query = None, prec_target = None):
         ''' 
         this function will yield a [0,1] interval similarity prediction
         predict also sets the values of potentially relevant gradint calculation parameters,
@@ -229,7 +229,10 @@ class ExpandedTuna(TunaSim):
          
         #set reweighted query and target and update reweight param gradients
         #intensities only from here on out
-        query, target = self.set_reweighted_intensity(query, target)
+        query, target = self.set_reweighted_intensity(query, target, prec_query, prec_target)
+
+        self.re_query = query.copy()
+        self.re_target = target.copy()
 
         #generate uncollapsed intensity combining functions
         difs = query - target
@@ -307,6 +310,7 @@ class ExpandedTuna(TunaSim):
         if self.sigmoid_score:
             score = self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
             sig_grad = score * (1 - score)
+
         else:
             score = np.sum((expanded_difs + expanded_mults) / add_norm)
 
@@ -318,9 +322,11 @@ class ExpandedTuna(TunaSim):
             else:
                 side = target_grad
 
-            score_grad = np.sum(value * side)
+            #remember to only apply to indices that were not clipped
+            score_grad = np.sum(value[self.nonzero_indices] * side)
+
             if np.any(np.isnan(score_grad)) or np.any(np.isinf(score_grad)):
-                print(key)
+                print(key, np.any(np.isnan(side)), np.any(np.isnan(value)))
             #chain rule f'(g(x)) is grad of query or target
             #g'(x) is grad w.r.t. whichever parameter
             if self.sigmoid_score:
@@ -338,7 +344,7 @@ class ExpandedTuna(TunaSim):
         return score
 
 
-    def set_reweighted_intensity(self, query, target):
+    def set_reweighted_intensity(self, query, target, prec_query, prec_target):
         ''' 
         This function performs reweighting and deriv setting for reweighting
         '''
@@ -350,7 +356,7 @@ class ExpandedTuna(TunaSim):
         #get reweight based on raw mz values
         if self.mz_query:
             self.query_mz_weights = self.smooth_reweight('query_mz', 
-                                                         query[:,0],
+                                                         query[:,0]/1000,
                                                         self.query_mz_int,
                                                         self.query_mz_a,
                                                         self.query_mz_b,
@@ -359,7 +365,7 @@ class ExpandedTuna(TunaSim):
             
         if self.mz_target:           
             self.target_mz_weights = self.smooth_reweight('target_mz',
-                                                          target[:,0], 
+                                                          target[:,0]/1000, 
                                                             self.target_mz_int,
                                                             self.target_mz_a,
                                                             self.target_mz_b,
@@ -369,7 +375,7 @@ class ExpandedTuna(TunaSim):
         #grab weights for spectra as precursor offset
         if self.mz_offset_query:
             self.query_mz_offset_weights = self.smooth_reweight('query_mz_offset',
-                                                                query[:,0] - self.prec_query, 
+                                                                (query[:,0] - prec_query)/1000, 
                                                                 self.query_mz_offset_int,
                                                                 self.query_mz_offset_a,
                                                                 self.query_mz_offset_b,
@@ -378,7 +384,7 @@ class ExpandedTuna(TunaSim):
             
         if self.mz_offset_target:   
             self.target_mz_offset_weights = self.smooth_reweight('target_mz_offset',
-                                                                 target[:,0] - self.prec_target, 
+                                                                 (target[:,0] - prec_target) / 1000, 
                                                                  self.target_mz_offset_int,
                                                                 self.target_mz_offset_a,
                                                                 self.target_mz_offset_b,
@@ -388,7 +394,7 @@ class ExpandedTuna(TunaSim):
         #as a function of intensities
         if self.intensity_query:
             self.query_intensity_weights = self.smooth_reweight('query_intensity',
-                                                                query[:,1], 
+                                                                query[:,1] / np.max(query[:,1]), 
                                                                 self.query_intensity_int,
                                                                 self.query_intensity_a,
                                                                 self.query_intensity_b,
@@ -397,7 +403,7 @@ class ExpandedTuna(TunaSim):
             
         if self.intensity_target:
             self.target_intensity_weights = self.smooth_reweight('target_intensity',
-                                                                target[:,1],
+                                                                target[:,1] / np.max(target[:,1]),
                                                                 self.target_intensity_int,
                                                                 self.target_intensity_a,
                                                                 self.target_intensity_b,
@@ -480,27 +486,11 @@ class ExpandedTuna(TunaSim):
                 else:
                     aggregated = target_intensities
 
-                self.grads1_int_param[key] = val * (aggregated / getattr(self, '_'.join(key.split('_')[:-1] + '_weights')))
+                new_val = val * (aggregated / getattr(self, '_'.join(key.split('_')[:-1]) + '_weights'))
+                self.grads1_int_param[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
 
-        return query_intensities, target_intensities
+        #self.nonzero indices set here
+        self.nonzero_indices = np.where((query_intensities != 0) | (target_intensities != 0))[0]
 
-
-
-def yool():
-    #depending on collapse and expand terms, consolidate or don't to some degree
-        if self.collapsed != 0:
-
-            #collapse all terms an
-            difs_abs = np.sum(difs_abs)
-            mults = np.sum(mults)
-            add_norm = np.sum(add)
-            mult_norm = np.sum(query * target)
-
-            collapsed_difs = self.dif_a * np.sum(np.abs(query - target)) ** self.dif_b
-            collapsed_mults = self.mult_a * np.sum(query * target) ** self.mult_b
-            collapsed_term = self.collapsed * (collapsed_difs + collapsed_mults) / (np.sum(mult_norm) + np.sum(add_norm)) 
-
-        #some metrics are expressed as sim measures
-        return self.sigmoid(self.sig_factor *(expanded_term))
-
+        return query_intensities[self.nonzero_indices], target_intensities[self.nonzero_indices]
         

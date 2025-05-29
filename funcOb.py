@@ -162,7 +162,10 @@ class func_ob:
                 index = i % train_data.shape[0]
 
             #call predict method from Tuna Sim which updates gradients
-            self.pred_val = self.sim_func.predict(train_data.iloc[index]['query'], train_data.iloc[index]['target'])
+            self.pred_val = self.sim_func.predict(train_data.iloc[index]['query'], 
+                                                  train_data.iloc[index]['target'], 
+                                                  train_data.iloc[index]['precquery'], 
+                                                  train_data.iloc[index]['prectarget'])
 
             # if abs(train_data.iloc[index]['score'] - self.pred_val) > 0.5:
             #      print(index, train_data.iloc[index]['score'], self.pred_val, self.sim_func.mult_a, self.sim_func.add_norm_b)
