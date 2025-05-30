@@ -39,7 +39,7 @@ class func_ob:
             solver: str = 'stoch',
             lambdas: List[float] = 0.01,
             max_iter: int = 1e5,
-            momentum_weights: List[float] = [0.8,0.2],
+            momentum_beta: float = 0.8,
             momentum_type: str = 'None',
             running_grad_start: float = 1e5,
             rand: bool = False,
@@ -58,7 +58,7 @@ class func_ob:
         self.solver = solver
         self.bounds = bounds
         self.max_iter = max_iter
-        self.momentum_weights = momentum_weights
+        self.momentum_beta = momentum_beta
         self.momentum_type = momentum_type
         self.running_grad_start = running_grad_start
         self.rand=rand
@@ -72,6 +72,9 @@ class func_ob:
         self.running_grad = None
         self.trained_vals = None
         self.objective_value = None
+
+        #set accumulated gradients dictionary in case we are implementing momentum
+        self.accumulated_gradients = {key: 0 for key in self.init_vals.keys()}
 
         if type(lambdas) == float or type(lambdas) == int:
             self.lambdas = dict()
@@ -90,9 +93,6 @@ class func_ob:
         inits.update(fixed_vals)
         inits.update(init_vals)
         self.sim_func = self.sim_func(**inits)
-
-        if sum(self.momentum_weights)!=1:
-            raise ValueError('sum of stop props must equal 1')
         
         if self.tol<0:
             raise ValueError('early stop must be geq 0')
@@ -221,43 +221,42 @@ class func_ob:
 
             if self.momentum_type == 'None':
 
-                updated = current - lambda_ * (loss_grad + reg_grad) * value  
-                
-                if key in self.bounds:
-                    bounds = self.bounds[key]
-                    setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
-
-                else:
-                    setattr(self.sim_func, key, updated)
-
-                # if i > self.max_iter - 4:
-                #     print(key, current, updated)
-                if np.isnan(updated):
-                    print(key, current, updated)
-                    print(yool)
+                step = (loss_grad + reg_grad) * value  
     
             elif self.momentum_type == 'simple':
 
-                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                    print('bad grad')
-                    i+=1
-
-                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * self.grad
-                self.init_vals -= self.lambdas * self.running_grad
-
-            elif self.momentum_type == 'jonie':
-
-                self.init_vals -= self.lambdas * self.momentum_weights[0] * self.running_grad
-                self.grad = approx(self.init_vals, self.objective_func, self.epsilon, [self.params, train_data.iloc[index:index+1]])
-                if np.any(np.isnan(self.grad)) or np.any(np.isinf(self.grad)):
-                    print('bad grad')
-                    i+=1
+                #first calculate the new step which takes accumulated grad into consideration
+                step = (self.momentum_beta * self.accumulated_gradient[key]) + (1 - self.momentum_beta) * (loss_grad + reg_grad) * value
                 
-                self.init_vals -= self.lambdas * self.momentum_weights[1] * self.grad
-                self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1]* self.grad
+                #update accumulated_gradient
+                self.accumulated_gradients[key] = step
+                
+            #https://stats.stackexchange.com/questions/179915/whats-the-difference-between-momentum-based-gradient-descent-and-nesterovs-acc
+            elif self.momentum_type == 'nag':
 
-        self.running_grad = self.momentum_weights[0] * self.running_grad + self.momentum_weights[1] * running_grad_temp/len(self.init_vals)
+                adjustment = (1 - self.momentum_beta) * (loss_grad + reg_grad) * value
+                overshoot = (self.momentum_beta * self.accumulated_gradient[key]) + adjustment
+
+                #by adjusting the grad for beta again, we can get the next round step in
+                # the end result will be wrong but we could always just take the overshoot back out...who cares
+                step = adjustment + self.momentum_beta * overshoot
+
+                self.accumulated_gradients = overshoot
+                
+            #need lambda scheduler logic here
+
+            if key in self.bounds:
+                    bounds = self.bounds[key]
+                    setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
+
+            else:
+                setattr(self.sim_func, key, updated)
+
+            if np.isnan(updated):
+                print(key, current, updated)
+                print(yool)
+
+        self.running_grad = self.momentum_beta * self.running_grad + (1 - self.momentum_beta) * running_grad_temp/len(self.init_vals)
 
     def trained_func(self):
         if self.trained_vals is None:

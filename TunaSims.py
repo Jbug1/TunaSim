@@ -173,7 +173,7 @@ class ExpandedTuna(TunaSim):
                 self.grads1_int_param[f'{name}_b'] = grad
 
             if c is not None:
-                grad = np.power(array, 3)
+                grad = np.power(array, 0.5)
                 grad[zero_inds] = 0
                 self.grads1_int_param[f'{name}_c'] = grad
         
