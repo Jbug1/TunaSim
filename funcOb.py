@@ -37,16 +37,16 @@ class func_ob:
             regularization_name: str = '',
             loss_name: str = 'l2',
             solver: str = 'stoch',
-            lambdas: List[float] = 0.01,
+            learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             momentum_beta: float = 0.8,
-            momentum_type: str = 'None',
+            momentum_type: str = None,
             running_grad_start: float = 1e5,
-            rand: bool = False,
-            scheduler: Callable = None,
             bounds: dict = None,
             tol: float = 0.0,
-            balance_classes: bool = True
+            balance_classes: bool = True,
+            learning_rate_scheduler: str = None,
+            learning_beta: float = 0.8
     ):
         self.name = name
         self.sim_func = sim_func
@@ -61,11 +61,11 @@ class func_ob:
         self.momentum_beta = momentum_beta
         self.momentum_type = momentum_type
         self.running_grad_start = running_grad_start
-        self.rand=rand
-        self.scheduler = scheduler
         self.n_iter = 0
         self.tol = tol
         self.balance_classes = balance_classes
+        self.learning_rate_scheduler = learning_rate_scheduler
+        self.learning_beta = learning_beta
 
         self.grad = None
         self.converged = None
@@ -74,17 +74,23 @@ class func_ob:
         self.objective_value = None
 
         #set accumulated gradients dictionary in case we are implementing momentum
-        self.accumulated_gradients = {key: 0 for key in self.init_vals.keys()}
+        self.accumulated_gradient = {key: 0 for key in self.init_vals.keys()}
 
-        if type(lambdas) == float or type(lambdas) == int:
-            self.lambdas = dict()
+        if type(learning_rates) == float or type(learning_rates) == int:
+            self.learning_rates = dict()
             for key in self.init_vals:
-                self.lambdas[key] = lambdas
+                self.learning_rates[key] = learning_rates
 
         else:
-            self.lambdas = lambdas
+            self.learning_rates = learning_rates
 
-        if len(self.lambdas) != len(self.init_vals):
+        #we will start squared accumulated with large value for small steps
+        self.squared_accumulated = {key: 1 for key in self.init_vals.keys()}
+
+        #grad directions begins at zero, signifying a change in neither direction
+        self.grad_directions = {key: 1 for key in self.init_vals.keys()}
+
+        if len(self.learning_rates) != len(self.init_vals):
             raise ValueError('lambda and init vals len must match')
         
         self.init_vals = init_vals
@@ -150,14 +156,27 @@ class func_ob:
 
         if self.balance_classes:
 
-            train_data = self.balanced_upsample(train_data)
-            train_data = train_data.sample(frac = 1)
+            
+                train_data.sort_values(by = 'score', inplace = True)
+                counts = Counter(train_data['score'])
+                if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
+                    raise ValueError("Can't balance this dataset")
+                
+                n_zeros = counts[0]
+                n_ones = counts[1]
 
         while i < self.max_iter and not self.converged:
 
-            #grab individual row
-            if self.rand:
-                index = np.random.randint(train_data.shape[0])
+            if self.balance_classes:
+
+                if np.random.binomial(1, 0.5) == 0:
+
+                    index = i % n_zeros
+
+                else:
+
+                    index = i % n_ones + n_zeros
+
             else:
                 index = i % train_data.shape[0]
 
@@ -171,90 +190,117 @@ class func_ob:
             #      print(index, train_data.iloc[index]['score'], self.pred_val, self.sim_func.mult_a, self.sim_func.add_norm_b)
 
             #update with the score of choice and funcOb's loss function
-            self.step(train_data.iloc[index]['score'], self.pred_val, i)    
+            self.step(train_data.iloc[index]['score'], self.pred_val)    
 
             #update object based on results
-            self.n_iter += 1
-            i+=1
+            i += 1
             self.converged = self.running_grad < self.tol
 
             if verbose is not None:
 
-                if self.n_iter % verbose == 0:
-                    print(f'completed {self.n_iter} iterations')
+                if i % verbose == 0:
+                    print(f'completed {i} iterations')
 
-    def balanced_upsample(self, data):
+        self.n_iter += i
+
+    def calculate_unweighted_step(self, grad, param):
+
+        if self.momentum_type is None:
+
+                step = grad
     
-        counts = Counter(data['score']).most_common()
+        elif self.momentum_type == 'simple':
 
-        wholes = 1 / (counts[1][1] / (counts[0][1] )) // 1
-        partials = 1 / (counts[1][1] / (counts[0][1])) % 1
+            #first calculate the new step which takes accumulated grad into consideration
+            step = (self.momentum_beta * self.accumulated_gradient[param]) + (1 - self.momentum_beta) * grad
+            
+            #update accumulated_gradient
+            self.accumulated_gradient[param] = step
+            
+        elif self.momentum_type == 'nag':
 
-        minorities = data[data['score'] == counts[1][0]]
-        majorities = data[data['score'] == counts[0][0]]
-        counts = Counter(data['score']).most_common()
+            adjustment = (1 - self.momentum_beta) * (grad)
+            overshoot = (self.momentum_beta * self.accumulated_gradient[param]) + adjustment
 
-        return pd.concat([majorities] + [minorities for i in range(int(wholes))]+ [minorities[:int(partials * len(minorities))]])
+            #by adjusting the grad for beta again, we can get the next round step in
+            # the end result will be wrong but we could always just take the overshoot back out...who cares
+            step = adjustment + self.momentum_beta * overshoot
 
-    def step(self, score, pred_val, i):
+            self.accumulated_gradient[param] = overshoot
+
+        return step
+    
+    def calculate_learning_rate(self, param, unweighted_step):
+
+        if self.learning_rate_scheduler is None:
+
+            learning_rate = self.learning_rates[param]
+        
+        elif self.learning_rate_scheduler == 'RMS':
+
+            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * unweighted_step**2
+            learning_rate = self.learning_rates[param] / ( 1e-7 + np.sqrt(self.squared_accumulated[param]))
+
+        elif self.learning_rate_scheduler == 'AD':
+
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * unweighted_step > 0
+            learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param])
+
+        #utilize both AD and RMS
+        elif self.learning_rate_scheduler == 'hybrid':
+
+            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * unweighted_step**2
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * unweighted_step > 0
+            learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param]) / ( 1e-7 + np.sqrt(self.squared_accumulated[param]))
+
+        return learning_rate
+    
+    def step(self, score, pred_val):
             
         #collector for running grad across all variables
         running_grad_temp = 0
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val - score)
+
+        #print(f"{pred_val=}, {loss_grad=}, {score=}")
     
         if np.isnan(loss_grad):
-            print('yabaddo', pred_val)
+            raise ValueError("loss grad is nan")
         
         for key in self.init_vals:
 
-            value = self.sim_func.grads1_score_agg[key]
+            #chain rule to get gradient w.r.t loss func
+            grad = self.sim_func.grads1_score_agg[key] * loss_grad
 
-            running_grad_temp += abs(value * loss_grad)
+            #update running gradient
+            running_grad_temp += abs(grad)
 
-            lambda_ = self.lambdas[key]
-            current = getattr(self.sim_func, key)
+            current_value = getattr(self.sim_func, key)
 
-            #get gradient w.r.t. regualrization function
-            reg_grad = self.regularization_grad(current)
+            #add gradient w.r.t. regualrization function
+            grad  += self.regularization_grad(current_value)
 
-            if self.momentum_type == 'None':
-
-                step = (loss_grad + reg_grad) * value  
-    
-            elif self.momentum_type == 'simple':
-
-                #first calculate the new step which takes accumulated grad into consideration
-                step = (self.momentum_beta * self.accumulated_gradient[key]) + (1 - self.momentum_beta) * (loss_grad + reg_grad) * value
+            #calculate direction and mag of unweighted step
+            unweighted_step = self.calculate_unweighted_step(grad + grad, key)
                 
-                #update accumulated_gradient
-                self.accumulated_gradients[key] = step
-                
-            #https://stats.stackexchange.com/questions/179915/whats-the-difference-between-momentum-based-gradient-descent-and-nesterovs-acc
-            elif self.momentum_type == 'nag':
+            #adjust lambda according to scheduler
+            learning_rate = self.calculate_learning_rate(key, unweighted_step)
 
-                adjustment = (1 - self.momentum_beta) * (loss_grad + reg_grad) * value
-                overshoot = (self.momentum_beta * self.accumulated_gradient[key]) + adjustment
+            updated = current_value - learning_rate * unweighted_step
 
-                #by adjusting the grad for beta again, we can get the next round step in
-                # the end result will be wrong but we could always just take the overshoot back out...who cares
-                step = adjustment + self.momentum_beta * overshoot
-
-                self.accumulated_gradients = overshoot
-                
-            #need lambda scheduler logic here
+            #print(f"{key=}, {current_value=}, {updated=}, {learning_rate=}, {unweighted_step=}, {grad=}, {loss_grad=}")
 
             if key in self.bounds:
-                    bounds = self.bounds[key]
-                    setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
+                bounds = self.bounds[key]
+                setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
 
             else:
                 setattr(self.sim_func, key, updated)
 
             if np.isnan(updated):
-                print(key, current, updated)
-                print(yool)
+                print(key, current_value, updated)
+                raise ValueError('updated value is Nan')
 
         self.running_grad = self.momentum_beta * self.running_grad + (1 - self.momentum_beta) * running_grad_temp/len(self.init_vals)
 
