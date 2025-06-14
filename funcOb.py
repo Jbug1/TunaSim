@@ -46,7 +46,8 @@ class func_ob:
             tol: float = 0.0,
             balance_classes: bool = True,
             learning_rate_scheduler: str = None,
-            learning_beta: float = 0.8
+            learning_beta: float = 0.8,
+            groupby_column: str = None,
     ):
         self.name = name
         self.sim_func = sim_func
@@ -66,6 +67,7 @@ class func_ob:
         self.balance_classes = balance_classes
         self.learning_rate_scheduler = learning_rate_scheduler
         self.learning_beta = learning_beta
+        self.groupby_column = groupby_column
 
         self.grad = None
         self.converged = None
@@ -120,6 +122,17 @@ class func_ob:
         self.converged = False
         self.running_grad = self.running_grad_start
 
+        if self.balance_classes:
+
+            train_data = train_data.sample(frac = 1)
+            train_data.sort_values(by = 'score', inplace = True)
+            counts = Counter(train_data['score'])
+            if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
+                raise ValueError("Can't balance this dataset")
+            
+            self.n_zeros = counts[0]
+            self.n_ones = counts[1]
+
         if self.solver == 'stoch':
 
             self.stoch_descent(train_data, verbose)
@@ -144,6 +157,47 @@ class func_ob:
         self.n_iter += scipy_res.nfev
         self.objective_value = scipy_res.fun
 
+    def single_match_grad(self, train_data, i):
+
+        if self.balance_classes:
+
+            if np.random.binomial(1, 0.5) == 0:
+
+                index = i % self.n_zeros
+
+            else:
+
+                index = i % self.n_ones + self.n_zeros
+
+        else:
+            index = i % train_data.shape[0]
+
+        #call predict method from Tuna Sim which updates gradients
+        return train_data.iloc[index]['score'], self.sim_func.predict(train_data.iloc[index]['query'], 
+                                                train_data.iloc[index]['target'], 
+                                                train_data.iloc[index]['precquery'], 
+                                                train_data.iloc[index]['prectarget'])
+    
+    def grouped_match_grad(self, train_data, i):
+
+        #select only what we are interested in grouping
+        sub = train_data[train_data[self.groupby_column] == train_data.iloc[i][self.groupby_column]]
+
+        #in the first round, we want to pick the index with the highest similarity scores
+        sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], x['precquery'], x['prectarget'], grads = False), 
+                  axis = 1, 
+                  result_type = 'expand')
+        
+        #then, update gradients based on the best match for this grouping column value
+        best_match_index = np.argmax(sims)
+
+        return train_data.iloc[best_match_index]['score'], self.sim_func.predict(train_data.iloc[best_match_index]['query'], 
+                                                train_data.iloc[best_match_index]['target'], 
+                                                train_data.iloc[best_match_index]['precquery'], 
+                                                train_data.iloc[best_match_index]['prectarget'])
+
+
+
     def stoch_descent(self, train_data, verbose = None):
         """ 
         Implement gradient descent for model tuning
@@ -154,43 +208,17 @@ class func_ob:
         i=0
         self.running_grad = self.running_grad_start
 
-        if self.balance_classes:
-
-            
-                train_data.sort_values(by = 'score', inplace = True)
-                counts = Counter(train_data['score'])
-                if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
-                    raise ValueError("Can't balance this dataset")
-                
-                n_zeros = counts[0]
-                n_ones = counts[1]
-
         while i < self.max_iter and not self.converged:
 
-            if self.balance_classes:
+            if self.groupby_column is None:
 
-                if np.random.binomial(1, 0.5) == 0:
-
-                    index = i % n_zeros
-
-                else:
-
-                    index = i % n_ones + n_zeros
+                score, pred_val = self.single_match_grad(train_data, i)
 
             else:
-                index = i % train_data.shape[0]
-
-            #call predict method from Tuna Sim which updates gradients
-            self.pred_val = self.sim_func.predict(train_data.iloc[index]['query'], 
-                                                  train_data.iloc[index]['target'], 
-                                                  train_data.iloc[index]['precquery'], 
-                                                  train_data.iloc[index]['prectarget'])
-
-            # if abs(train_data.iloc[index]['score'] - self.pred_val) > 0.5:
-            #      print(index, train_data.iloc[index]['score'], self.pred_val, self.sim_func.mult_a, self.sim_func.add_norm_b)
-
+                score, pred_val = self.grouped_match_grad(train_data, i)
+            
             #update with the score of choice and funcOb's loss function
-            self.step(train_data.iloc[index]['score'], self.pred_val)    
+            self.step(score, pred_val)    
 
             #update object based on results
             i += 1
@@ -236,12 +264,12 @@ class func_ob:
 
             learning_rate = self.learning_rates[param]
         
-        elif self.learning_rate_scheduler == 'RMS':
+        elif self.learning_rate_scheduler == 'rms':
 
             self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * unweighted_step**2
             learning_rate = self.learning_rates[param] / ( 1e-7 + np.sqrt(self.squared_accumulated[param]))
 
-        elif self.learning_rate_scheduler == 'AD':
+        elif self.learning_rate_scheduler == 'ad':
 
             self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * unweighted_step > 0
             learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param])
@@ -263,7 +291,7 @@ class func_ob:
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val - score)
 
-        #print(f"{pred_val=}, {loss_grad=}, {score=}")
+        print(f"{pred_val=}, {loss_grad=}, {score=}")
     
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
@@ -279,10 +307,10 @@ class func_ob:
             current_value = getattr(self.sim_func, key)
 
             #add gradient w.r.t. regualrization function
-            grad  += self.regularization_grad(current_value)
+            grad += self.regularization_grad(current_value)
 
             #calculate direction and mag of unweighted step
-            unweighted_step = self.calculate_unweighted_step(grad + grad, key)
+            unweighted_step = self.calculate_unweighted_step(grad, key)
                 
             #adjust lambda according to scheduler
             learning_rate = self.calculate_learning_rate(key, unweighted_step)
