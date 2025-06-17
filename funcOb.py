@@ -291,7 +291,7 @@ class func_ob:
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val - score)
 
-        print(f"{pred_val=}, {loss_grad=}, {score=}")
+        #print(f"{pred_val=}, {loss_grad=}, {score=}")
     
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
