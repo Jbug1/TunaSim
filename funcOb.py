@@ -46,7 +46,7 @@ class func_ob:
             tol: float = 0.0,
             balance_classes: bool = True,
             learning_rate_scheduler: str = None,
-            learning_beta: float = 0.8,
+            learning_beta: float = 0.5,
             groupby_column: str = None,
     ):
         self.name = name
@@ -258,7 +258,7 @@ class func_ob:
 
         return step
     
-    def calculate_learning_rate(self, param, unweighted_step):
+    def calculate_learning_rate(self, param, grad):
 
         if self.learning_rate_scheduler is None:
 
@@ -266,20 +266,20 @@ class func_ob:
         
         elif self.learning_rate_scheduler == 'rms':
 
-            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * unweighted_step**2
-            learning_rate = self.learning_rates[param] / ( 1e-7 + np.sqrt(self.squared_accumulated[param]))
+            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * grad ** 2
+            learning_rate = self.learning_rates[param] / (1e-7 + np.sqrt(self.squared_accumulated[param]))
 
         elif self.learning_rate_scheduler == 'ad':
 
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * unweighted_step > 0
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * grad > 0
             learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param])
 
         #utilize both AD and RMS
         elif self.learning_rate_scheduler == 'hybrid':
 
-            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * unweighted_step**2
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * unweighted_step > 0
-            learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param]) / ( 1e-7 + np.sqrt(self.squared_accumulated[param]))
+            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * grad ** 2
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * grad > 0
+            learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param]) / (1e-7 + np.sqrt(self.squared_accumulated[param]))
 
         return learning_rate
     
@@ -311,9 +311,12 @@ class func_ob:
 
             #calculate direction and mag of unweighted step
             unweighted_step = self.calculate_unweighted_step(grad, key)
+            #print(f'{key=}')
+            #print(f'{grad=}')
                 
             #adjust lambda according to scheduler
-            learning_rate = self.calculate_learning_rate(key, unweighted_step)
+            learning_rate = self.calculate_learning_rate(key, grad)
+            #print(f'{learning_rate=}')
 
             updated = current_value - learning_rate * unweighted_step
 
