@@ -106,16 +106,6 @@ class func_ob:
             raise ValueError('early stop must be geq 0')
         
         self.trained_values = copy.deepcopy(self.init_vals)
-        
-
-    # @property
-    # def objective_func(self):
-        
-    #     return partial(self.objective, 
-    #                     loss_func = self.loss_func, 
-    #                     reg_func = self.regularization_func, 
-    #                     sim_func = self.sim_func)
-    
     
     def fit(self, train_data, verbose=None):
 
@@ -125,7 +115,13 @@ class func_ob:
         if self.balance_classes:
 
             train_data = train_data.sample(frac = 1)
-            train_data.sort_values(by = 'score', inplace = True)
+
+            if self.groupby_column is None:
+                train_data.sort_values(by = 'score', inplace = True)
+
+            else:
+                train_data.sort_values(by = ['score', self.groupby_column], inplace = True)
+
             counts = Counter(train_data['score'])
             if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
                 raise ValueError("Can't balance this dataset")
@@ -271,14 +267,14 @@ class func_ob:
 
         elif self.learning_rate_scheduler == 'ad':
 
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * grad > 0
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
             learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param])
 
         #utilize both AD and RMS
         elif self.learning_rate_scheduler == 'hybrid':
 
             self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * grad ** 2
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * grad > 0
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
             learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param]) / (1e-7 + np.sqrt(self.squared_accumulated[param]))
 
         return learning_rate
@@ -311,16 +307,14 @@ class func_ob:
 
             #calculate direction and mag of unweighted step
             unweighted_step = self.calculate_unweighted_step(grad, key)
-            #print(f'{key=}')
-            #print(f'{grad=}')
                 
             #adjust lambda according to scheduler
             learning_rate = self.calculate_learning_rate(key, grad)
-            #print(f'{learning_rate=}')
 
-            updated = current_value - learning_rate * unweighted_step
+            step = learning_rate * unweighted_step
+            updated = current_value - step
 
-            #print(f"{key=}, {current_value=}, {updated=}, {learning_rate=}, {unweighted_step=}, {grad=}, {loss_grad=}")
+            #print(f"{key=}, {current_value=}, {updated=}, {learning_rate=}, {unweighted_step=}, {grad=}, {step=}")
 
             if key in self.bounds:
                 bounds = self.bounds[key]
