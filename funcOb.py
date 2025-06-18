@@ -58,7 +58,7 @@ class func_ob:
         self.init_vals = init_vals
         self.solver = solver
         self.bounds = bounds
-        self.max_iter = max_iter
+        self.max_iter = int(max_iter)
         self.momentum_beta = momentum_beta
         self.momentum_type = momentum_type
         self.running_grad_start = running_grad_start
@@ -74,6 +74,9 @@ class func_ob:
         self.running_grad = None
         self.trained_vals = None
         self.objective_value = None
+
+        self.ones = 0
+        self.zeros = 0
 
         #set accumulated gradients dictionary in case we are implementing momentum
         self.accumulated_gradient = {key: 0 for key in self.init_vals.keys()}
@@ -109,18 +112,20 @@ class func_ob:
     
     def fit(self, train_data, verbose=None):
 
+        self.train_data_shape = train_data.shape[0]
+
         self.converged = False
         self.running_grad = self.running_grad_start
 
         if self.balance_classes:
 
-            train_data = train_data.sample(frac = 1)
+            self.train_data = train_data.sample(frac = 1)
 
             if self.groupby_column is None:
-                train_data.sort_values(by = 'score', inplace = True)
+                self.train_data.sort_values(by = 'score', inplace = True)
 
             else:
-                train_data.sort_values(by = ['score', self.groupby_column], inplace = True)
+                self.train_data.sort_values(by = ['score', self.groupby_column], inplace = True)
 
             counts = Counter(train_data['score'])
             if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
@@ -131,7 +136,7 @@ class func_ob:
 
         if self.solver == 'stoch':
 
-            self.stoch_descent(train_data, verbose)
+            self.stoch_descent(verbose)
 
         else:
             self.scipy_solver_estimate(train_data)
@@ -153,31 +158,50 @@ class func_ob:
         self.n_iter += scipy_res.nfev
         self.objective_value = scipy_res.fun
 
-    def single_match_grad(self, train_data, i):
+    def get_index(self):
 
         if self.balance_classes:
 
             if np.random.binomial(1, 0.5) == 0:
 
-                index = i % self.n_zeros
+                index = np.random.randint(self.n_zeros)
 
             else:
 
-                index = i % self.n_ones + self.n_zeros
+                index = self.n_zeros + np.random.randint(self.n_ones)
 
         else:
-            index = i % train_data.shape[0]
+
+            index = np.random.randint(self.train_data_shape)
+
+        return index
+
+    def single_match_grad(self):
+
+        index = self.get_index()
+
+        if self.train_data.iloc[index]['score'] == 1:
+            self.ones +=1
+        else:
+            self.zeros +=1
 
         #call predict method from Tuna Sim which updates gradients
-        return train_data.iloc[index]['score'], self.sim_func.predict(train_data.iloc[index]['query'], 
-                                                train_data.iloc[index]['target'], 
-                                                train_data.iloc[index]['precquery'], 
-                                                train_data.iloc[index]['prectarget'])
+        return self.train_data.iloc[index]['score'], self.sim_func.predict(self.train_data.iloc[index]['query'], 
+                                                self.train_data.iloc[index]['target'], 
+                                                self.train_data.iloc[index]['precquery'], 
+                                                self.train_data.iloc[index]['prectarget'])
     
-    def grouped_match_grad(self, train_data, i):
+    def grouped_match_grad(self):
+
+        index = self.get_index()
+
+        if self.train_data.iloc[index]['score'] == 1:
+            self.ones +=1
+        else:
+            self.zeros +=1
 
         #select only what we are interested in grouping
-        sub = train_data[train_data[self.groupby_column] == train_data.iloc[i][self.groupby_column]]
+        sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
 
         #in the first round, we want to pick the index with the highest similarity scores
         sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], x['precquery'], x['prectarget'], grads = False), 
@@ -187,45 +211,45 @@ class func_ob:
         #then, update gradients based on the best match for this grouping column value
         best_match_index = np.argmax(sims)
 
-        return train_data.iloc[best_match_index]['score'], self.sim_func.predict(train_data.iloc[best_match_index]['query'], 
-                                                train_data.iloc[best_match_index]['target'], 
-                                                train_data.iloc[best_match_index]['precquery'], 
-                                                train_data.iloc[best_match_index]['prectarget'])
+        return self.train_data.iloc[best_match_index]['score'], self.sim_func.predict(self.train_data.iloc[best_match_index]['query'], 
+                                                self.train_data.iloc[best_match_index]['target'], 
+                                                self.train_data.iloc[best_match_index]['precquery'], 
+                                                self.train_data.iloc[best_match_index]['prectarget'])
 
 
 
-    def stoch_descent(self, train_data, verbose = None):
+    def stoch_descent(self, verbose = None):
         """ 
         Implement gradient descent for model tuning
         func must take: match, query, target
         """
 
-        #set index at 0 and initial running grad so that we don't trigger early stop
-        i=0
         self.running_grad = self.running_grad_start
 
-        while i < self.max_iter and not self.converged:
+        for _ in range(int(self.max_iter)):
+
+            if self.converged:
+                break
 
             if self.groupby_column is None:
 
-                score, pred_val = self.single_match_grad(train_data, i)
+                score, pred_val = self.single_match_grad()
 
             else:
-                score, pred_val = self.grouped_match_grad(train_data, i)
+                score, pred_val = self.grouped_match_grad()
             
             #update with the score of choice and funcOb's loss function
             self.step(score, pred_val)    
 
             #update object based on results
-            i += 1
             self.converged = self.running_grad < self.tol
 
             if verbose is not None:
 
-                if i % verbose == 0:
-                    print(f'completed {i} iterations')
+                if (_ + 1) % verbose == 0:
+                    print(f'completed {_ + 1} iterations')
 
-        self.n_iter += i
+        self.n_iter += _
 
     def calculate_unweighted_step(self, grad, param):
 
