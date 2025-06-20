@@ -142,21 +142,6 @@ class func_ob:
             self.scipy_solver_estimate(train_data)
 
         self.trained_vals = self.init_vals
-    
-    def scipy_solver_estimate(self, train_data, warm_start=False):
-
-        if warm_start:
-            init_vals = self.trained_vals
-        else:
-            init_vals=self.init_vals
-
-        scipy_res = mini(fun=self.objective_func, x0=init_vals, args=[self.params, train_data], tol=self.tol, bounds = self.bounds, method = self.solver)
-
-        #update values based on results
-        self.converged = scipy_res.success
-        self.trained_vals = scipy_res.x
-        self.n_iter += scipy_res.nfev
-        self.objective_value = scipy_res.fun
 
     def get_index(self):
 
@@ -203,18 +188,22 @@ class func_ob:
         #select only what we are interested in grouping
         sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
 
+        if len(set(sub['score'])) > 1:
+            print('argh')
+
         #in the first round, we want to pick the index with the highest similarity scores
         sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], x['precquery'], x['prectarget'], grads = False), 
                   axis = 1, 
                   result_type = 'expand')
         
+        
         #then, update gradients based on the best match for this grouping column value
         best_match_index = np.argmax(sims)
 
-        return self.train_data.iloc[best_match_index]['score'], self.sim_func.predict(self.train_data.iloc[best_match_index]['query'], 
-                                                self.train_data.iloc[best_match_index]['target'], 
-                                                self.train_data.iloc[best_match_index]['precquery'], 
-                                                self.train_data.iloc[best_match_index]['prectarget'])
+        return sub.iloc[best_match_index]['score'], self.sim_func.predict(sub.iloc[best_match_index]['query'], 
+                                                sub.iloc[best_match_index]['target'], 
+                                                sub.iloc[best_match_index]['precquery'], 
+                                                sub.iloc[best_match_index]['prectarget'])
 
 
 
@@ -239,7 +228,7 @@ class func_ob:
                 score, pred_val = self.grouped_match_grad()
             
             #update with the score of choice and funcOb's loss function
-            self.step(score, pred_val)    
+            self.step(score, pred_val, _ % 100 == 0)    
 
             #update object based on results
             self.converged = self.running_grad < self.tol
@@ -294,6 +283,12 @@ class func_ob:
             self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
             learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param])
 
+        elif self.learning_rate_scheduler == 'ad_mult':
+
+            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
+            self.learning_rates[param] = self.learning_rates[param] * 2 * abs(self.grad_directions[param])
+            learning_rate = self.learning_rates[param]
+
         #utilize both AD and RMS
         elif self.learning_rate_scheduler == 'hybrid':
 
@@ -303,7 +298,7 @@ class func_ob:
 
         return learning_rate
     
-    def step(self, score, pred_val):
+    def step(self, score, pred_val, verbose = False):
             
         #collector for running grad across all variables
         running_grad_temp = 0
@@ -338,7 +333,8 @@ class func_ob:
             step = learning_rate * unweighted_step
             updated = current_value - step
 
-            #print(f"{key=}, {current_value=}, {updated=}, {learning_rate=}, {unweighted_step=}, {grad=}, {step=}")
+            if verbose:
+                print(f"{key=}, {current_value=}, {updated=}, {learning_rate=}, {unweighted_step=}, {grad=}, {step=}")
 
             if key in self.bounds:
                 bounds = self.bounds[key]
