@@ -228,7 +228,7 @@ class func_ob:
                 score, pred_val = self.grouped_match_grad()
             
             #update with the score of choice and funcOb's loss function
-            self.step(score, pred_val, _ % 100 == 0)    
+            self.step(score, pred_val)    
 
             #update object based on results
             self.converged = self.running_grad < self.tol
@@ -298,7 +298,7 @@ class func_ob:
 
         return learning_rate
     
-    def step(self, score, pred_val, verbose = False):
+    def step(self, score, pred_val, verbose = True):
             
         #collector for running grad across all variables
         running_grad_temp = 0
