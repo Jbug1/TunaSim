@@ -284,7 +284,7 @@ class func_ob:
         elif self.learning_rate_scheduler == 'ad_mult':
 
             self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
-            self.learning_rates[param] = self.learning_rates[param] * 2 * abs(self.grad_directions[param])
+            self.learning_rates[param] = min(max(self.learning_rates[param] * 2 * abs(self.grad_directions[param]), 1e-5), 1e5)
             learning_rate = self.learning_rates[param]
 
         #utilize both AD and RMS
@@ -296,7 +296,7 @@ class func_ob:
 
         return learning_rate
     
-    def step(self, score, pred_val, verbose = True):
+    def step(self, score, pred_val, verbose = False):
             
         #collector for running grad across all variables
         running_grad_temp = 0
