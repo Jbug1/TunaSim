@@ -2,8 +2,6 @@
 import numpy as np
 from functools import partial
 from typing import Callable, List
-from scipy.optimize import minimize as mini
-from scipy.optimize import approx_fprime as approx
 import copy
 from collections import Counter
 import pandas as pd
