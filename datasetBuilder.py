@@ -1,15 +1,22 @@
 # conatins funcitons for importing data
 # this should include functions for reading in msps and cleaning/create sim datasets
 import pandas as pd
-import tools
+#import tools
 import numpy as np
 import scipy
-import spectral_similarity
+#import spectral_similarity
 import copy
 import time
 import bisect
 import os
-import ms_entropy
+#import ms_entropy
+
+def ppm(base, ppm):
+    """
+    convert ppm threshold to dalton based on precursor exact mass (base)
+    """
+
+    return base * (ppm / 1e6)
 
 
 def get_spec_features(spec_query,spec_target):
@@ -224,7 +231,7 @@ def create_matches_df_chunk(query_df,
         seen_+=1
         cores_set.add(query_df.iloc[i]['inchi_base'])
 
-        dif = tools.ppm(query_df.iloc[i]["precursor"], precursor_thresh)
+        dif = ppm(query_df.iloc[i]["precursor"], precursor_thresh)
             
         #get precursor boundaries and their corresponding indices
         upper = query_df.iloc[i]["precursor"] + dif

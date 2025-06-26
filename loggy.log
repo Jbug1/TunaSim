@@ -1,0 +1,42 @@
+matched prec thresh: 10, max len:1000000.0 adduct match: False in 142.3460352269467
+total number of query spectra considered: 23073
+total number of target spectra considered: 1000077
+total inchicores seen: 634
+11 queries went unmatched
+num true matches core: 289578 
+num true matches key: 283812 
+matched prec thresh: 10, max len:1000000.0 adduct match: False in 141.29797894798685
+total number of query spectra considered: 22136
+total number of target spectra considered: 1000041
+total inchicores seen: 590
+13 queries went unmatched
+num true matches core: 271560 
+num true matches key: 264270 
+matched prec thresh: 10, max len:1000000.0 adduct match: False in 137.18266334699
+total number of query spectra considered: 21885
+total number of target spectra considered: 1000141
+total inchicores seen: 575
+25 queries went unmatched
+num true matches core: 271243 
+num true matches key: 266003 
+matched prec thresh: 10, max len:2000000.0 adduct match: False in 272.1141936769709
+total number of query spectra considered: 43151
+total number of target spectra considered: 2000069
+total inchicores seen: 1148
+41 queries went unmatched
+num true matches core: 548937 
+num true matches key: 532257 
+matched prec thresh: 10, max len:2000000.0 adduct match: False in 276.5423374179518
+total number of query spectra considered: 45783
+total number of target spectra considered: 2000033
+total inchicores seen: 1214
+46 queries went unmatched
+num true matches core: 581575 
+num true matches key: 558273 
+matched prec thresh: 10, max len:2000000.0 adduct match: False in 258.56187130103353
+total number of query spectra considered: 45112
+total number of target spectra considered: 2000008
+total inchicores seen: 1220
+40 queries went unmatched
+num true matches core: 551042 
+num true matches key: 540122 
