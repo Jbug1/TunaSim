@@ -91,7 +91,7 @@ class func_ob:
         self.squared_accumulated = {key: 1 for key in self.init_vals.keys()}
 
         #grad directions begins at zero, signifying a change in neither direction
-        self.grad_directions = {key: 1 for key in self.init_vals.keys()}
+        self.accumulated_directions = {key: 0 for key in self.init_vals.keys()}
 
         if len(self.learning_rates) != len(self.init_vals):
             raise ValueError('lambda and init vals len must match')
@@ -115,9 +115,9 @@ class func_ob:
         self.converged = False
         self.running_grad = self.running_grad_start
 
-        if self.balance_classes:
+        self.train_data = train_data.sample(frac = 1)
 
-            self.train_data = train_data.sample(frac = 1)
+        if self.balance_classes:
 
             if self.groupby_column is None:
                 self.train_data.sort_values(by = 'score', inplace = True)
@@ -186,9 +186,6 @@ class func_ob:
         #select only what we are interested in grouping
         sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
 
-        if len(set(sub['score'])) > 1:
-            print('argh')
-
         #in the first round, we want to pick the index with the highest similarity scores
         sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], x['precquery'], x['prectarget'], grads = False), 
                   axis = 1, 
@@ -236,7 +233,7 @@ class func_ob:
                 if (_ + 1) % verbose == 0:
                     print(f'completed {_ + 1} iterations')
 
-        self.n_iter += _
+            self.n_iter += 1
 
     def calculate_unweighted_step(self, grad, param):
 
@@ -278,13 +275,10 @@ class func_ob:
 
         elif self.learning_rate_scheduler == 'ad':
 
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
-            learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param])
-
-        elif self.learning_rate_scheduler == 'ad_mult':
-
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
-            self.learning_rates[param] = min(max(self.learning_rates[param] * 2 * abs(self.grad_directions[param]), 1e-5), 1e5)
+            #map to [-1,1]
+            direction = int(grad > 0) * 2 -1
+            self.accumulated_directions[param] = self.learning_beta * self.accumulated_directions[param] + (1-self.learning_beta) * direction
+            self.learning_rates[param] = self.learning_rates[param] * (0.8 + 0.4 * abs(self.accumulated_directions[param]))
             learning_rate = self.learning_rates[param]
 
         #utilize both AD and RMS
@@ -303,8 +297,6 @@ class func_ob:
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val - score)
-
-        #print(f"{pred_val=}, {loss_grad=}, {score=}")
     
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
@@ -332,7 +324,7 @@ class func_ob:
             updated = current_value - step
 
             if verbose:
-                print(f"{key=}, {current_value=}, {updated=}, {learning_rate=}, {unweighted_step=}, {grad=}, {step=}")
+                print(f"{key=}, {self.accumulated_directions[key]}, {current_value=}, {updated=}, {learning_rate=}, {grad=}")
 
             if key in self.bounds:
                 bounds = self.bounds[key]

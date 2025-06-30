@@ -144,7 +144,9 @@ class ExpandedTuna(TunaSim):
         b_component = np.power(array, (b or 1))
         combined = a * b_component
         res = (intercept or 0) + combined
-        zero_inds = np.where(res <= 0)[0]
+
+        #exclude both 0 inds from the original and 0 inds after reweight
+        zero_inds = np.logical_or(res <= 0, array == 0)
         res[zero_inds] = 0
 
         if self.set_grad1:
