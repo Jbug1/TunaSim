@@ -34,7 +34,41 @@ class TunaSim:
         
         return np.power(intensities, offset + mz_power_array + fixed_exp + scipy.stats.entropy(intensities) ** entropy_exp)
 
+    def smooth_reweight_2(self,
+                          name,
+                          array,
+                          intercept,
+                          a,
+                          b):
+        """ flexible exponenet simple reweight"""
         
+        b_component = np.power(array, (b or 1))
+        combined = a * b_component
+        res = (intercept or 0) + combined
+
+        #exclude both 0 inds from the original and 0 inds after reweight
+        zero_inds = np.logical_or(res <= 0, array == 0)
+        res[zero_inds] = 0
+
+        if self.set_grad1:
+
+            #set intercept grad
+            grad = np.ones(len(array))
+            grad[zero_inds] = 0
+            self.grads1_int_param[f'{name}_int'] = grad
+
+            #set a grad
+            grad = b_component
+            grad[zero_inds] = 0
+            self.grads1_int_param[f'{name}_a'] = grad
+
+            #set b grad
+            grad = combined * np.log(array)
+            grad[zero_inds] = 0
+            self.grads1_int_param[f'{name}_b'] = grad
+
+        return res
+    
     @staticmethod
     def sigmoid(z):
     
@@ -133,40 +167,31 @@ class ExpandedTuna(TunaSim):
         self.target_normalized_intensity_weights = None
         self.target_entropy_weights = None
 
-    def smooth_reweight_2(self,
-                          name,
-                          array,
-                          intercept,
-                          a,
-                          b):
-        """ flexible exponenet simple reweight"""
+    def set_weight_triggers(self):
+        ''' 
+        look at which parameters are set to determine which calculations are necessary
+        '''
+        triggers = ['mz',
+                    'mz_offset',
+                    'intensity',
+                    'normalized_intensity',
+                    'entropy'
+                    ]
         
-        b_component = np.power(array, (b or 1))
-        combined = a * b_component
-        res = (intercept or 0) + combined
+        #set initial state to False, if some input is non-zero, then flip it to True
+        #begin under the assumption that we will do no reweighting
+        self.unweighted = True
+        for trigger in triggers:
+            for side in ['query','target']:
+                setattr(self, f'{trigger}_{side}', False)
+                for variable in ['int','a','b','c']:
 
-        #exclude both 0 inds from the original and 0 inds after reweight
-        zero_inds = np.logical_or(res <= 0, array == 0)
-        res[zero_inds] = 0
+                    if getattr(self, f'{side}_{trigger}_{variable}') is not None:
 
-        if self.set_grad1:
-
-            #set intercept grad
-            grad = np.ones(len(array))
-            grad[zero_inds] = 0
-            self.grads1_int_param[f'{name}_int'] = grad
-
-            #set a grad
-            grad = b_component
-            grad[zero_inds] = 0
-            self.grads1_int_param[f'{name}_a'] = grad
-
-            #set b grad
-            grad = combined * np.log(array)
-            grad[zero_inds] = 0
-            self.grads1_int_param[f'{name}_b'] = grad
-
-        return res
+                        #set the proper side to let us know to compute values and track derivatives
+                        #set unweighted to false if at least one is true
+                        setattr(self, f'{trigger}_{side}', True)
+                        self.unweighted = False
 
     def smooth_reweight(self,
                         name,
@@ -214,31 +239,6 @@ class ExpandedTuna(TunaSim):
         
         return res
 
-    def set_weight_triggers(self):
-        ''' 
-        look at which parameters are set to determine which calculations are necessary
-        '''
-        triggers = ['mz',
-                    'mz_offset',
-                    'intensity',
-                    'normalized_intensity',
-                    'entropy'
-                    ]
-        
-        #set initial state to False, if some input is non-zero, then flip it to True
-        #begin under the assumption that we will do no reweighting
-        self.unweighted = True
-        for trigger in triggers:
-            for side in ['query','target']:
-                setattr(self, f'{trigger}_{side}', False)
-                for variable in ['int','a','b','c']:
-
-                    if getattr(self, f'{side}_{trigger}_{variable}') is not None:
-
-                        #set the proper side to let us know to compute values and track derivatives
-                        #set unweighted to false if at least one is true
-                        setattr(self, f'{trigger}_{side}', True)
-                        self.unweighted = False
 
 
     def predict(self, query, target, prec_query = None, prec_target = None, grads = True):
@@ -521,4 +521,138 @@ class ExpandedTuna(TunaSim):
         self.nonzero_indices = np.where((query_intensities != 0) | (target_intensities != 0))[0]
 
         return query_intensities[self.nonzero_indices], target_intensities[self.nonzero_indices]
+    
+@dataclass
+class ScoreByCore(TunaSim):
+
+    ''' 
+    reweights a set of core matches for a given query based on the scores of other potential matches
+    '''
+
+    intensity_int: float = None
+    intensity_a: float = None
+    intensity_b: float = None
+    normalized_intensity_int: float = None
+    normalized_intensity_a: float = None
+    normalized_intensity_b: float = None
+    match_position_int: float = None
+    match_position_a: float = None
+    match_position_b: float = None
+
+    def __post_init__(self):
+
+        self.grads1_int_param = dict()
+        self.grads2_int_param = dict()
+
+        self.set_weight_triggers()
+
+    def set_weight_triggers(self):
+        ''' 
+        look at which parameters are set to determine which calculations are necessary
+        '''
+        triggers = ['intensity',
+                    'normalized_intensity'
+                    'match_position'
+                    ]
+        
+        #set initial state to False, if some input is non-zero, then flip it to True
+        #begin under the assumption that we will do no reweighting
+        self.unweighted = True
+        for trigger in triggers:
+            setattr(self, trigger, False)
+            for variable in ['int','a','b','c']:
+                if getattr(self, f'{trigger}_{variable}') is not None:
+
+                    #set the proper side to let us know to compute values and track derivatives
+                    #set unweighted to false if at least one is true
+                    setattr(self, trigger, True)
+                    self.unweighted = False
+
+    def combine_intensity_weights(self):
+
+        components = [self.intensity,
+                    self.normalized_intensity,
+                    self.match_position]
+
+        if self.weight_combine == 'add':
+
+            scores = sum(components)
+
+        elif self.weight_combine == 'multiply':
+
+            scores = prod(components)
+
+            #change gradients
+            for key, val in self.grads1_int_param.items():
+
+                new_val = val * (scores / getattr(self, '_'.join(key.split('_')[:-1]) + '_weights'))
+                self.grads1_int_param[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
+
+        #cap scores at 1 and change gradients accordingly
+        above_1_inds = np.where(scores > 1)[0]
+
+        if len(above_1_inds) > 0:
+            scores[above_1_inds] = 1
+
+            for key, val in self.grads1_int_param.items():
+
+                val[above_1_inds] = 1
+                self.grads1_int_param[key] = val
+
+
+        return scores
+
+    def predict(self, scores):
+
+        #roll with original query if no reweighting is required
+        if self.unweighted:
+            return scores
+
+        #get reweight based on raw mz values
+        if self.intensity:
+            self.query_mz_weights = self.smooth_reweight_2('intensity', 
+                                                         scores,
+                                                        self.intensity_int,
+                                                        self.intensity_a,
+                                                        self.intensity_b,
+                                                        )
+            
+        if self.normalized_intensity:           
+            self.target_mz_weights = self.smooth_reweight_2('normalized_intensity',
+                                                          scores / np.sum(scores), 
+                                                            self.normalized_intensity_int,
+                                                            self.normalized_intensity_a,
+                                                            self.normalized_intensity_b,
+                                                            )
+            
+        if self.dif_from_top:           
+            self.target_mz_weights = self.smooth_reweight_2('dif_from_top',
+                                                          np.max(scores) - scores, 
+                                                            self.normalized_intensity_int,
+                                                            self.normalized_intensity_a,
+                                                            self.normalized_intensity_b,
+                                                            )
+        
+        #grab weights for spectra as precursor offset
+        if self.match_position:
+            self.query_mz_offset_weights = self.smooth_reweight_2('match_order',
+                                                                np.linspace(1,len(scores), len(scores)), 
+                                                                self.match_position_int,
+                                                                self.match_position_a,
+                                                                self.match_position_b,
+                                                                )
+            
+        
+        return self.combine_intensity_weights()
+
+
+
+
+
+    
+
+    
+
+    
+
         
