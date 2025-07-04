@@ -45,6 +45,8 @@ class func_ob:
             balance_classes: bool = True,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
+            ad_int = 0.8,
+            ad_slope = 0.3,
             groupby_column: str = None,
     ):
         self.name = name
@@ -65,6 +67,8 @@ class func_ob:
         self.balance_classes = balance_classes
         self.learning_rate_scheduler = learning_rate_scheduler
         self.learning_beta = learning_beta
+        self.ad_int = ad_int
+        self.ad_slope = ad_slope
         self.groupby_column = groupby_column
 
         self.grad = None
@@ -124,6 +128,8 @@ class func_ob:
 
             else:
                 self.train_data.sort_values(by = ['score', self.groupby_column], inplace = True)
+
+            print('balanced')
 
             counts = Counter(train_data['score'])
             if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
@@ -228,10 +234,8 @@ class func_ob:
             #update object based on results
             self.converged = self.running_grad < self.tol
 
-            if verbose is not None:
-
-                if (_ + 1) % verbose == 0:
-                    print(f'completed {_ + 1} iterations')
+            if (_ + 1) % (verbose or 1e12) == 0:
+                print(f'completed {_ + 1} iterations')
 
             self.n_iter += 1
 
@@ -276,9 +280,8 @@ class func_ob:
         elif self.learning_rate_scheduler == 'ad':
 
             #map to [-1,1]
-            direction = int(grad > 0) * 2 -1
-            self.accumulated_directions[param] = self.learning_beta * self.accumulated_directions[param] + (1-self.learning_beta) * direction
-            self.learning_rates[param] = self.learning_rates[param] * (0.8 + 0.4 * abs(self.accumulated_directions[param]))
+            self.accumulated_directions[param] = self.learning_beta * self.accumulated_directions[param] + (1-self.learning_beta) * grad
+            self.learning_rates[param] = self.learning_rates[param] * (self.ad_int + self.ad_slope * abs(self.accumulated_directions[param]))
             learning_rate = self.learning_rates[param]
 
         #utilize both AD and RMS
@@ -290,7 +293,7 @@ class func_ob:
 
         return learning_rate
     
-    def step(self, score, pred_val, verbose = False):
+    def step(self, score, pred_val, verbose = True):
             
         #collector for running grad across all variables
         running_grad_temp = 0
@@ -323,8 +326,8 @@ class func_ob:
             step = learning_rate * unweighted_step
             updated = current_value - step
 
-            if verbose:
-                print(f"{key=}, {self.accumulated_directions[key]}, {current_value=}, {updated=}, {learning_rate=}, {grad=}")
+            if verbose and self.n_iter % 10 ==0:
+                print(f"{self.n_iter=}, {key=}, {self.accumulated_directions[key]}, {current_value=}, {updated=}, {learning_rate=}, {grad=}")
 
             if key in self.bounds:
                 bounds = self.bounds[key]
