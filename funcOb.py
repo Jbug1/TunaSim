@@ -4,7 +4,7 @@ from functools import partial
 from typing import Callable, List
 import copy
 from collections import Counter
-import pandas as pd
+from collections import deque
 
 
 class func_ob:
@@ -45,8 +45,9 @@ class func_ob:
             balance_classes: bool = True,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
-            ad_int = 0.8,
-            ad_slope = 0.3,
+            ad_int: float = 0.8,
+            ad_slope: float  = 0.3,
+            scale_holdover_vals: int = 2,
             groupby_column: str = None,
     ):
         self.name = name
@@ -69,6 +70,7 @@ class func_ob:
         self.learning_beta = learning_beta
         self.ad_int = ad_int
         self.ad_slope = ad_slope
+        self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
 
         self.grad = None
@@ -80,8 +82,11 @@ class func_ob:
         self.ones = 0
         self.zeros = 0
 
-        #set accumulated gradients dictionary in case we are implementing momentum
-        self.accumulated_gradient = {key: 0 for key in self.init_vals.keys()}
+        #set scheduling dictionaries
+        self.accumulated_gradients = {key: 0 for key in self.init_vals}
+        self.accumulated_scales = {key: 0 for key in self.init_vals}
+        self.scale_holdovers = {key: deque([1 for i in range(self.scale_holdover_vals)]) for key in self.init_vals}
+
 
         if type(learning_rates) == float or type(learning_rates) == int:
             self.learning_rates = dict()
@@ -248,7 +253,7 @@ class func_ob:
         elif self.momentum_type == 'simple':
 
             #first calculate the new step which takes accumulated grad into consideration
-            step = (self.momentum_beta * self.accumulated_gradient[param]) + (1 - self.momentum_beta) * grad
+            step = (self.momentum_beta * self.accumulated_gradients[param]) + (1 - self.momentum_beta) * grad
             
             #update accumulated_gradient
             self.accumulated_gradient[param] = step
@@ -256,13 +261,13 @@ class func_ob:
         elif self.momentum_type == 'nag':
 
             adjustment = (1 - self.momentum_beta) * (grad)
-            overshoot = (self.momentum_beta * self.accumulated_gradient[param]) + adjustment
+            overshoot = (self.momentum_beta * self.accumulated_gradients[param]) + adjustment
 
             #by adjusting the grad for beta again, we can get the next round step in
             # the end result will be wrong but we could always just take the overshoot back out...who cares
             step = adjustment + self.momentum_beta * overshoot
 
-            self.accumulated_gradient[param] = overshoot
+            self.accumulated_gradients[param] = overshoot
 
         return step
     
@@ -270,30 +275,25 @@ class func_ob:
 
         if self.learning_rate_scheduler is None:
 
-            learning_rate = self.learning_rates[param]
-        
-        elif self.learning_rate_scheduler == 'rms':
+            return  self.learning_rates[param]
 
-            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * grad ** 2
-            learning_rate = self.learning_rates[param] / (1e-7 + np.sqrt(self.squared_accumulated[param]))
+        elif self.learning_rate_scheduler == 'sag':
 
-        elif self.learning_rate_scheduler == 'ad':
+            #add scale contribution to holdover
+            self.scale_holdovers[param].append(abs(grad))
 
-            #map to [-1,1]
-            self.accumulated_directions[param] = self.learning_beta * self.accumulated_directions[param] + (1-self.learning_beta) * grad
-            self.learning_rates[param] = self.learning_rates[param] * (self.ad_int + self.ad_slope * abs(self.accumulated_directions[param]))
-            learning_rate = self.learning_rates[param]
+            #use the most recent grad to get exp decaying net gradient
+            self.accumulated_gradients[param] = self.learning_beta * self.accumulated_gradients[param] + (1 - self.learning_beta) * grad
 
-        #utilize both AD and RMS
-        elif self.learning_rate_scheduler == 'hybrid':
+            #get accumulated scale with the popped holdover value
+            self.accumulated_scales[param] = self.accumulated_scales[param] * self.learning_beta + self.scale_holdovers[param].popleft() * (1 - self.learning_beta)
 
-            self.squared_accumulated[param] = self.learning_beta * self.squared_accumulated[param] + (1 - self.learning_beta) * grad ** 2
-            self.grad_directions[param] = self.learning_beta * self.grad_directions[param] + (1 - self.learning_beta) * int(grad > 0)
-            learning_rate = self.learning_rates[param]  * abs(self.grad_directions[param]) / (1e-7 + np.sqrt(self.squared_accumulated[param]))
-
-        return learning_rate
+            #update the learning rate
+            self.learning_rates[param] = self.learning_rates[param] * (self.ad_int + self.ad_slope * abs(self.accumulated_gradients[param]) / self.accumulated_scales[param])
+            
+            return max(1e-7, self.learning_rates[param])
     
-    def step(self, score, pred_val, verbose = True):
+    def step(self, score, pred_val, verbose = False):
             
         #collector for running grad across all variables
         running_grad_temp = 0
@@ -327,7 +327,7 @@ class func_ob:
             updated = current_value - step
 
             if verbose and self.n_iter % 10 ==0:
-                print(f"{self.n_iter=}, {key=}, {self.accumulated_directions[key]}, {current_value=}, {updated=}, {learning_rate=}, {grad=}")
+                print(f"{self.n_iter=}, {key=}, {self.accumulated_gradients[key]}, {self.accumulated_scales[key]}, {current_value=}, {updated=}, {learning_rate=}")
 
             if key in self.bounds:
                 bounds = self.bounds[key]
