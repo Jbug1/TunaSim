@@ -134,8 +134,6 @@ class func_ob:
             else:
                 self.train_data.sort_values(by = ['score', self.groupby_column], inplace = True)
 
-            print('balanced')
-
             counts = Counter(train_data['score'])
             if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
                 raise ValueError("Can't balance this dataset")

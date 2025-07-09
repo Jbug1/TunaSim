@@ -106,3 +106,15 @@ running_direction = 0.5
 #     steps.append(pos_ratio * running_direction)
 #     scales.append(running_scale)
     
+{'query_normalized_intensity_int': -5.616869108938424,
+ 'query_normalized_intensity_a': -0.8717128291569861,
+ 'query_normalized_intensity_b': 4.276338313247879,
+ 'target_normalized_intensity_int': 7.752261811682536,
+ 'target_normalized_intensity_a': 0.5812459182631224,
+ 'target_normalized_intensity_b': -3.322890174503326,
+ 'dif_a': 1.1324630405677742,
+ 'mult_a': 1.724855718222281,
+ 'dif_b': 2.939947399582162,
+ 'mult_b': -6.600171505183003,
+ 'add_norm_a': -0.1492049805016046,
+ 'add_norm_b': -0.38042929436784007}
