@@ -198,7 +198,15 @@ class TunaSim:
                         self.unweighted = False
                         self.weight_triggers_activated +=1
 
-    
+    def predict_for_dataset(self, dataset):
+
+        return dataset.apply(lambda x: self.predict(x['query'], 
+                                            x['target'],
+                                            x['precquery'], 
+                                            x['prectarget'], 
+                                            grads = False),
+                                            axis=1,
+                                            result_type="expand")
 @dataclass
 class ExpandedTuna(TunaSim):
     ''' 
