@@ -305,7 +305,7 @@ class func_ob:
         for key in self.init_vals:
 
             #chain rule to get gradient w.r.t loss func
-            grad = self.sim_func.grads1_score_agg[key] * loss_grad
+            grad = self.sim_func.grads1[key] * loss_grad
 
             #update running gradient
             running_grad_temp += abs(grad)
