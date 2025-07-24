@@ -20,19 +20,6 @@ class TunaSim:
     set_grad1: bool = True
     set_grad2: bool = True
 
-    @staticmethod
-    def tuna_weight_intensity(spectrum,
-                          fixed_exp = 0,
-                          mz_exp = 0,
-                          entropy_exp = 0,
-                          offset = -1
-                          ):
-    
-        mz_power_array = np.power(spectrum[:,0], mz_exp)
-        intensities = spectrum[:,1]
-        
-        return np.power(intensities, offset + mz_power_array + fixed_exp + scipy.stats.entropy(intensities) ** entropy_exp)
-
     def smooth_reweight_2(self,
                           name,
                           array,
@@ -81,14 +68,12 @@ class TunaSim:
         query_components = [self.query_mz_weights,
                             self.query_mz_offset_weights,
                             self.query_intensity_weights,
-                            self.query_normalized_intensity_weights,
-                            self.query_entropy_weights]
+                            self.query_normalized_intensity_weights]
         
         target_components = [self.target_mz_weights,
                             self.target_mz_offset_weights,
                             self.target_intensity_weights,
-                            self.target_normalized_intensity_weights,
-                            self.target_entropy_weights]
+                            self.target_normalized_intensity_weights]
         
         query_components = [i for i in query_components if i is not None]
         target_components = [i for i in target_components if i is not None]
@@ -177,7 +162,6 @@ class TunaSim:
                     'mz_offset',
                     'intensity',
                     'normalized_intensity',
-                    'entropy'
                     ]
         
         #set initial state to False, if some input is non-zero, then flip it to True
@@ -207,6 +191,96 @@ class TunaSim:
                                             grads = False),
                                             axis=1,
                                             result_type="expand")
+    
+    def set_reweighted_intensity(self, query, target, prec_query, prec_target, grads = True):
+        ''' 
+        This function performs reweighting and deriv setting for reweighting
+        '''
+
+        #roll with original query if no reweighting is required
+        if self.unweighted:
+            return
+
+        #get reweight based on raw mz values
+        if self.mz_query:
+            self.query_mz_weights = self.smooth_reweight_2('query_mz', 
+                                                         query[:,0]/1000,
+                                                        self.query_mz_int,
+                                                        self.query_mz_a,
+                                                        self.query_mz_b,
+                                                        grads = grads
+                                                        )
+            
+        if self.mz_target:           
+            self.target_mz_weights = self.smooth_reweight_2('target_mz',
+                                                          target[:,0]/1000, 
+                                                            self.target_mz_int,
+                                                            self.target_mz_a,
+                                                            self.target_mz_b,
+                                                            grads = grads
+                                                            )
+        
+        #grab weights for spectra as precursor offset
+        if self.mz_offset_query:
+            self.query_mz_offset_weights = self.smooth_reweight_2('query_mz_offset',
+                                                                (query[:,0] - prec_query) / 1000, 
+                                                                self.query_mz_offset_int,
+                                                                self.query_mz_offset_a,
+                                                                self.query_mz_offset_b,
+                                                                grads = grads
+                                                                )
+            
+        if self.mz_offset_target:   
+            self.target_mz_offset_weights = self.smooth_reweight_2('target_mz_offset',
+                                                                 (target[:,0] - prec_target) / 1000, 
+                                                                 self.target_mz_offset_int,
+                                                                self.target_mz_offset_a,
+                                                                self.target_mz_offset_b,
+                                                                grads = grads
+                                                                )
+        
+        #as a function of intensities
+        if self.intensity_query:
+            self.query_intensity_weights = self.smooth_reweight_2('query_intensity',
+                                                                query[:,1] / np.max(query[:,1]), 
+                                                                self.query_intensity_int,
+                                                                self.query_intensity_a,
+                                                                self.query_intensity_b,
+                                                                grads = grads
+                                                            )
+            
+        if self.intensity_target:
+            self.target_intensity_weights = self.smooth_reweight_2('target_intensity',
+                                                                target[:,1] / np.max(target[:,1]),
+                                                                self.target_intensity_int,
+                                                                self.target_intensity_a,
+                                                                self.target_intensity_b,
+                                                                grads = grads
+                                                            )
+        
+        #as a function of normalized intensities
+        if self.normalized_intensity_query:
+            self.query_normalized_intensity_weights = self.smooth_reweight_2('query_normalized_intensity',
+                                                                           query[:,1] /np.sum(query[:,1]), 
+                                                                            self.query_normalized_intensity_int,
+                                                                            self.query_normalized_intensity_a,
+                                                                            self.query_normalized_intensity_b,
+                                                                            grads = grads
+                                                                            )
+            
+        if self.normalized_intensity_target:  
+            self.target_normalized_intensity_weights = self.smooth_reweight_2('target_normalized_intensity',
+                                                                            target[:,1] / np.sum(target[:,1]), 
+                                                                            self.target_normalized_intensity_int,
+                                                                            self.target_normalized_intensity_a,
+                                                                            self.target_normalized_intensity_b,
+                                                                            grads = grads
+                                                                            )
+
+       
+        #combine components for intensities and return
+        return self.combine_intensity_weights(grads)
+    
 @dataclass
 class ExpandedTuna(TunaSim):
     ''' 
@@ -245,14 +319,6 @@ class ExpandedTuna(TunaSim):
     target_normalized_intensity_a: float = None
     target_normalized_intensity_b: float = None
     target_normalized_intensity_c: float = None
-    query_entropy_int: float = None
-    query_entropy_a: float = None
-    query_entropy_b: float = None
-    query_entropy_c: float = None
-    target_entropy_int: float = None
-    target_entropy_a: float = None
-    target_entropy_b: float = None
-    target_entropy_c: float = None
     sim_int: float = 0
     dif_a: float = 0
     dif_b: float= 1
@@ -279,13 +345,11 @@ class ExpandedTuna(TunaSim):
         self.query_mz_offset_weights = None
         self.query_intensity_weights = None
         self.query_normalized_intensity_weights = None
-        self.query_entropy_weights = None
 
         self.target_mz_weights = None
         self.target_mz_offset_weights = None
         self.target_intensity_weights = None
         self.target_normalized_intensity_weights = None
-        self.target_entropy_weights = None
 
     def predict(self, query, target, prec_query = None, prec_target = None, grads = True):
         ''' 
@@ -442,112 +506,6 @@ class ExpandedTuna(TunaSim):
 
         return score
 
-
-    def set_reweighted_intensity(self, query, target, prec_query, prec_target, grads = True):
-        ''' 
-        This function performs reweighting and deriv setting for reweighting
-        '''
-
-        #roll with original query if no reweighting is required
-        if self.unweighted:
-            return
-
-        #get reweight based on raw mz values
-        if self.mz_query:
-            self.query_mz_weights = self.smooth_reweight_2('query_mz', 
-                                                         query[:,0]/1000,
-                                                        self.query_mz_int,
-                                                        self.query_mz_a,
-                                                        self.query_mz_b,
-                                                        grads = grads
-                                                        )
-            
-        if self.mz_target:           
-            self.target_mz_weights = self.smooth_reweight_2('target_mz',
-                                                          target[:,0]/1000, 
-                                                            self.target_mz_int,
-                                                            self.target_mz_a,
-                                                            self.target_mz_b,
-                                                            grads = grads
-                                                            )
-        
-        #grab weights for spectra as precursor offset
-        if self.mz_offset_query:
-            self.query_mz_offset_weights = self.smooth_reweight_2('query_mz_offset',
-                                                                (query[:,0] - prec_query) / 1000, 
-                                                                self.query_mz_offset_int,
-                                                                self.query_mz_offset_a,
-                                                                self.query_mz_offset_b,
-                                                                grads = grads
-                                                                )
-            
-        if self.mz_offset_target:   
-            self.target_mz_offset_weights = self.smooth_reweight_2('target_mz_offset',
-                                                                 (target[:,0] - prec_target) / 1000, 
-                                                                 self.target_mz_offset_int,
-                                                                self.target_mz_offset_a,
-                                                                self.target_mz_offset_b,
-                                                                grads = grads
-                                                                )
-        
-        #as a function of intensities
-        if self.intensity_query:
-            self.query_intensity_weights = self.smooth_reweight_2('query_intensity',
-                                                                query[:,1] / np.max(query[:,1]), 
-                                                                self.query_intensity_int,
-                                                                self.query_intensity_a,
-                                                                self.query_intensity_b,
-                                                                grads = grads
-                                                            )
-            
-        if self.intensity_target:
-            self.target_intensity_weights = self.smooth_reweight_2('target_intensity',
-                                                                target[:,1] / np.max(target[:,1]),
-                                                                self.target_intensity_int,
-                                                                self.target_intensity_a,
-                                                                self.target_intensity_b,
-                                                                grads = grads
-                                                            )
-        
-        #as a function of normalized intensities
-        if self.normalized_intensity_query:
-            self.query_normalized_intensity_weights = self.smooth_reweight_2('query_normalized_intensity',
-                                                                           query[:,1] /np.sum(query[:,1]), 
-                                                                            self.query_normalized_intensity_int,
-                                                                            self.query_normalized_intensity_a,
-                                                                            self.query_normalized_intensity_b,
-                                                                            grads = grads
-                                                                            )
-            
-        if self.normalized_intensity_target:  
-            self.target_normalized_intensity_weights = self.smooth_reweight_2('target_normalized_intensity',
-                                                                            target[:,1] / np.sum(target[:,1]), 
-                                                                            self.target_normalized_intensity_int,
-                                                                            self.target_normalized_intensity_a,
-                                                                            self.target_normalized_intensity_b,
-                                                                            grads = grads
-                                                                            )
-
-        if self.entropy_query:
-            self.query_entropy_weights = self.smooth_reweight_2('query_entropy',
-                                                              np.zeros(len(query)) + scipy.stats.entropy(query[:,1]), 
-                                                              self.query_entropy_int,
-                                                              self.query_entropy_a,
-                                                              self.query_entropy_b,
-                                                              grads = grads
-                                                              )
-            
-        if self.entropy_target:
-            self.target_entropy_weights = self.smooth_reweight_2('target_entropy',
-                                                               np.zeros(len(target)) + scipy.stats.entropy(target[:,1]), 
-                                                               self.target_entropy_int,
-                                                               self.target_entropy_a,
-                                                               self.target_entropy_b,
-                                                               grads = grads
-                                                               )
-            
-        #combine components for intensities and return
-        return self.combine_intensity_weights(grads)
     
 @dataclass
 class ScoreByCore(TunaSim):
@@ -572,6 +530,16 @@ class ScoreByCore(TunaSim):
         self.grads2 = dict()
 
         self.set_weight_triggers()
+
+        self.query_mz_weights = None
+        self.query_mz_offset_weights = None
+        self.query_intensity_weights = None
+        self.query_normalized_intensity_weights = None
+
+        self.target_mz_weights = None
+        self.target_mz_offset_weights = None
+        self.target_intensity_weights = None
+        self.target_normalized_intensity_weights = None
 
     def combine_intensity_weights(self, grads):
 
@@ -675,7 +643,7 @@ class ScoreByCore(TunaSim):
                 self.grads1[key] = value * (1 - value)
 
 
-
+@dataclass
 class DisconnectedTuna(TunaSim):
     """  
     multiply base and absolute difference base has its own normalizing constant
@@ -742,13 +710,11 @@ class DisconnectedTuna(TunaSim):
         self.query_mz_offset_weights = None
         self.query_intensity_weights = None
         self.query_normalized_intensity_weights = None
-        self.query_entropy_weights = None
 
         self.target_mz_weights = None
         self.target_mz_offset_weights = None
         self.target_intensity_weights = None
         self.target_normalized_intensity_weights = None
-        self.target_entropy_weights = None
     
     def predict(self, query, target, prec_query = None, prec_target = None, grads = True):
         ''' 
@@ -756,6 +722,11 @@ class DisconnectedTuna(TunaSim):
         predict also sets the values of potentially relevant gradint calculation parameters,
         and is therefore analagous to forward pass before backprop
         '''
+
+        #reset gradients if necessary
+        if grads:
+            self.grads1 = dict()
+            self.grads2 = dict()
 
         #match peaks...will ensure same number for both specs
         #same number is easier for grad but could be worth changing in future
@@ -821,6 +792,7 @@ class DisconnectedTuna(TunaSim):
         #calcualte gradient for similarity score params of dif and mult a(R -> R)
 
         if grads:
+
             dif_a_grad = np.sum(expanded_difs / (self.dif_a * dif_add_norm))
             mult_a_grad = np.sum(expanded_mults / (self.mult_a * mult_add_norm))
 
@@ -887,7 +859,9 @@ class DisconnectedTuna(TunaSim):
                               'mult_a', 
                               'mult_b', 
                               'dif_add_norm_a', 
-                              'dif_add_norm_b']
+                              'dif_add_norm_b',
+                              'mult_add_norm_a', 
+                              'mult_add_norm_b']
             
             sim_grads = [dif_a_grad, 
                          dif_b_grad, 
