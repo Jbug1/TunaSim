@@ -158,23 +158,25 @@ class TunaSim:
         ''' 
         look at which parameters are set to determine which calculations are necessary
         '''
-        triggers = ['mz',
-                    'mz_offset',
-                    'intensity',
-                    'normalized_intensity',
-                    ]
+        
         
         #set initial state to False, if some input is non-zero, then flip it to True
         #begin under the assumption that we will do no reweighting
         self.weight_triggers_activated = 0
 
         self.unweighted = True
-        for trigger in triggers:
-            for side in ['query','target']:
-                setattr(self, f'{trigger}_{side}', False)
+        for trigger in self.triggers:
+            for side in self.sides:
+
+                if side is None:
+                    var = trigger
+                else:
+                    var = f'{trigger}_{side}'
+
+                setattr(self, var, False)
                 for variable in ['int','a','b','c']:
 
-                    if getattr(self, f'{side}_{trigger}_{variable}') is not None:
+                    if getattr(self, f'{var}_{variable}') is not None:
 
                         #set the proper side to let us know to compute values and track derivatives
                         #set unweighted to false if at least one is true
@@ -332,6 +334,9 @@ class ExpandedTuna(TunaSim):
     ms2_ppm: float = None
     weight_combine: str = 'add'
     zero_clip_reweight: bool = True,
+
+    triggers = ['mz', 'mz_offset', 'intensity', 'normalized_intensity']
+    sides = ['query', 'target']
 
 
     def __post_init__(self):
@@ -508,7 +513,7 @@ class ExpandedTuna(TunaSim):
 
     
 @dataclass
-class ScoreByCore(TunaSim):
+class ScoreByQuery(TunaSim):
 
     ''' 
     reweights a set of core matches for a given query based on the scores of other potential matches
@@ -523,6 +528,23 @@ class ScoreByCore(TunaSim):
     match_position_int: float = None
     match_position_a: float = None
     match_position_b: float = None
+    none_intensity_int: float = None
+    none_intensity_a: float = None
+    none_intensity_b: float = None
+    none_normalized_intensity_int: float = None
+    none_normalized_intensity_a: float = None
+    none_normalized_intensity_b: float = None
+    none_match_position_int: float = None
+    none_match_position_a: float = None
+    none_match_position_b: float = None
+
+    triggers = ['raw_scores', 'dif_from_next', 'dif_from_top']
+    
+    sides = [None]
+
+    none_grad_placeholder = {'none_prob_int': list(),
+                             'none_prob_a': list(),
+                             'none_prob_b': list()}
 
     def __post_init__(self):
 
@@ -543,13 +565,15 @@ class ScoreByCore(TunaSim):
 
     def combine_intensity_weights(self, grads):
 
-        components = [self.intensity,
-                    self.normalized_intensity,
-                    self.match_position]
+        components = [self.raw_scores,
+                    self.dif_from_next,
+                    self.dif_from_top]
 
         if self.weight_combine == 'add':
 
             scores = sum(components)
+
+            self.update_none_grads_add()
 
         elif self.weight_combine == 'multiply':
 
@@ -564,83 +588,115 @@ class ScoreByCore(TunaSim):
 
         return scores
 
-    def set_weight_triggers(self):
-        ''' 
-        look at which parameters are set to determine which calculations are necessary
-        '''
-        triggers = ['intensity',
-                    'normalized_intensity'
-                    'match_position'
-                    ]
-        
-        #set initial state to False, if some input is non-zero, then flip it to True
-        #begin under the assumption that we will do no reweighting
-        self.unweighted = True
-        for trigger in triggers:
-            setattr(self, trigger, False)
-            for variable in ['int','a','b','c']:
-                if getattr(self, f'{trigger}_{variable}') is not None:
+    def get_none_prob(self, max_prob):
+        """ 
+        in a well calibrated model, the none of these probability should track 1 - the top score
+        """
 
-                    #set the proper side to let us know to compute values and track derivatives
-                    #set unweighted to false if at least one is true
-                    setattr(self, trigger, True)
-                    self.unweighted = False
+        max_exp = max_prob ** self.none_prob_b
 
-    def predict(self, scores, grads = True):
+        if self.grads:
 
-        #roll with original query if no reweighting is required
-        if self.unweighted:
-            return scores
+            self.grads1['none_prob_int'] = -1
+            self.grads1['none_prob_a'] = -max_exp
+            self.grads1['none_prob_b'] = -self.none_prob_a * max_exp *np.log(max_prob)
+
+        return 1 - self.none_prob_a * max_exp
+    
+    def update_none_grad_placeholder(self, a, b, array_val):
+        """ 
+        intermediate step to make sure none grads are properly chain-ruled
+        """
+
+        for param in ['none_grad_int', 'none_grad_a', 'none_grad_b']:
+
+            self.none_grad_placeholder[param].append(self.grads1[param] * a * b * array_val ** (b-1))
+            
+
+    def predict(self, scores, labels, grads = True):
+        """ 
+        steps:
+            1) get prob of not matching any of these labels
+            2) reorder intensities by prob of match descending
+            3) reweight probabilities according to which transformations  are triggered
+            4) consolidate probabilities of match
+            5) sigmoid to map to [0,1]
+            6) normalize so that all probs sum to 1
+        """
+
+        #this will optionally set grads based on whether we are in training or inference mode
+        scores = np.concatenate(([self.get_none_prob(np.max(scores), grads = grads)], [scores]))
+        labels = np.concatenate(([None], labels))
+
+        #negate to get in descending order
+        sort_order = np.argsort(-scores)
+
+        #track the index that contains that pesky score for (none of these)
+        none_ind = np.where(sort_order == 0)[0][0]
+
+        scores = scores[sort_order]
+        labels = labels[sort_order]
 
         #get reweight based on raw mz values
-        if self.intensity:
-            self.query_mz_weights = self.smooth_reweight_2('intensity', 
+        if self.raw_scores:
+            self.raw_score_weights = self.smooth_reweight_2('raw_scores', 
                                                          scores,
-                                                        self.intensity_int,
-                                                        self.intensity_a,
-                                                        self.intensity_b,
+                                                        self.raw_scores_int,
+                                                        self.raw_scores_a,
+                                                        self.raw_scores_b,
                                                         grads = grads
                                                         )
             
-        if self.normalized_intensity:           
-            self.target_mz_weights = self.smooth_reweight_2('normalized_intensity',
-                                                          scores / np.sum(scores), 
-                                                            self.normalized_intensity_int,
-                                                            self.normalized_intensity_a,
-                                                            self.normalized_intensity_b,
+            #update none grads
+            if grads:
+                self.update_none_grad_placeholder(self.raw_scores_a, 
+                                                  self.raw_scores_b, 
+                                                  self.raw_score_weights[none_ind])
+            
+        if self.score_dif_from_next:           
+            self.dif_from_next_weights = self.smooth_reweight_2('dif_from_next',
+                                                            scores - np.concatenate((scores[1:],[0])), 
+                                                            self.dif_from_next_int,
+                                                            self.dif_from_next_a,
+                                                            self.dif_from_next_b,
                                                             grads = grads
                                                             )
             
-        if self.dif_from_top:           
-            self.target_mz_weights = self.smooth_reweight_2('dif_from_top',
-                                                          np.max(scores) - scores, 
-                                                            self.normalized_intensity_int,
-                                                            self.normalized_intensity_a,
-                                                            self.normalized_intensity_b,
-                                                            grads = grads
-                                                            )
-        
-        #grab weights for spectra as precursor offset
-        if self.match_position:
-            self.query_mz_offset_weights = self.smooth_reweight_2('match_order',
-                                                                np.linspace(1,len(scores), len(scores)), 
-                                                                self.match_position_int,
-                                                                self.match_position_a,
-                                                                self.match_position_b,
-                                                                grads = grads
-                                                                )
-            
-        
-        reweighted = self.combine_intensity_weights(grads = grads)
+            #update none grads
+            if grads:
+                self.update_none_grad_placeholder(self.dif_from_next_a, 
+                                                  self.dif_from_next_b, 
+                                                  self.dif_from_next_weights[none_ind])
 
-        #sigmoid layer is necessary here to keep everything in the [0,1] range
-        reweighted = self.sigmoid(reweighted)
+        if self.score_dif_from_top:           
+            self.dif_from_top_weights = self.smooth_reweight_2('dif_from_top',
+                                                          np.max(scores) - scores, 
+                                                            self.dif_from_top_int,
+                                                            self.dif_from_top_a,
+                                                            self.dif_from_top_b,
+                                                            grads = grads
+                                                            )
+            
+            #update none grads
+            if grads:
+                self.update_none_grad_placeholder(self.dif_from_top_a, 
+                                                  self.dif_from_top_b,
+                                                  self.dif_from_top_weights[none_ind])
+            
+        reweighted_scores = self.combine_intensity_weights(grads = grads)
+
+        if grads:
+            self.update_none_prob_grads()
+
+        #need sigmoid layer to properly map to [0,1]
+        reweighted_scores = self.sigmoid(reweighted_scores)
 
         if grads:
 
             for key, value in self.grads1.items():
 
                 self.grads1[key] = value * (1 - value)
+
 
 
 @dataclass
