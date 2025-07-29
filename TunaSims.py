@@ -19,7 +19,7 @@ class TunaSim:
     set_grad1: bool = True
     set_grad2: bool = True
 
-    def smooth_reweight_2(self,
+    def smooth_reweight(self,
                           name,
                           array,
                           intercept,
@@ -56,6 +56,36 @@ class TunaSim:
 
         return res
     
+    def smooth_reweight_2(self,
+                          name,
+                          array,
+                          intercept,
+                          a,
+                          b,
+                          grads = True):
+        
+        """ flexible exponenet simple reweight"""
+        
+        b_component = np.power(array, b)
+        combined = a * b_component
+        res = intercept + combined
+
+        if grads:
+
+            #set intercept grad
+            grad = np.ones(len(array))
+            self.grads1[f'{name}_int'] = grad
+
+            #set a grad
+            grad = b_component
+            self.grads1[f'{name}_a'] = grad
+
+            #set b grad
+            grad = combined * np.log(array)
+            self.grads1[f'{name}_b'] = grad
+
+        return res
+    
     @staticmethod
     def sigmoid(z):
     
@@ -65,6 +95,8 @@ class TunaSim:
     def combine_intensity_weights(self, 
                                   query_components,
                                   target_components,
+                                  query_names,
+                                  target_names,
                                   grads):
 
 
@@ -81,24 +113,43 @@ class TunaSim:
                 target_components = np.prod(target_components, axis = 0)
 
                 if grads:
+                    
+                    #update all query grads to account for multiplying combination
+                    #for all query components
+                    for name, value in zip(query_names, query_components):
+
+                        chain_component = query_components / value
+                        for key in [f'{name}_int', f'{name}_a', f'{name}_b']:
+
+                            new_val = self.grads1[key] * chain_component
+                            self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
+
+                    #then for all target components
+                    for name, value in zip(target_names, target_components):
+
+                        chain_component = target_components / value
+                        for key in [f'{name}_int', f'{name}_a', f'{name}_b']:
+
+                            new_val = self.grads1[key] * chain_component
+                            self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
 
                     #change gradients
-                    for key, val in self.grads1.items():
+                    # for key, val in self.grads1.items():
 
-                        if 'query' in key:
-                            aggregated = query_components
-                        else:
-                            aggregated = target_components
+                    #     if 'query' in key:
+                    #         aggregated = query_components
+                    #     else:
+                    #         aggregated = target_components
 
-                        new_val = val * (aggregated / getattr(self, '_'.join(key.split('_')[:-1]) + '_weights'))
-                        self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
+                    #     new_val = val * (aggregated / getattr(self, '_'.join(key.split('_')[:-1]) + '_weights'))
+                    #     self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
 
         #self.nonzero indices set here
         self.nonzero_indices = np.where((query_components != 0) | (target_components != 0))[0]
 
         return query_components[self.nonzero_indices], target_components[self.nonzero_indices]
     
-    def smooth_reweight(self,
+    def smooth_reweight_old(self,
                         name,
                         array,
                         intercept,
@@ -324,23 +375,15 @@ class ExpandedTuna(TunaSim):
     triggers = ['mz', 'mz_offset', 'intensity', 'normalized_intensity']
     sides = ['query', 'target']
 
+    grads1 = dict()
+    grads2 = dict()
 
     def __post_init__(self):
 
-        self.grads1 = dict()
-        self.grads2 = dict()
-
-        self.set_weight_triggers()
-
-        self.query_mz_weights = None
-        self.query_mz_offset_weights = None
-        self.query_intensity_weights = None
-        self.query_normalized_intensity_weights = None
-
-        self.target_mz_weights = None
-        self.target_mz_offset_weights = None
-        self.target_intensity_weights = None
-        self.target_normalized_intensity_weights = None
+        try:
+            self.set_weight_triggers()
+        except:
+            pass
 
     def predict(self, query, target, prec_query = None, prec_target = None, grads = True):
         ''' 
@@ -534,16 +577,6 @@ class ScoreByQuery(TunaSim):
 
         self.set_weight_triggers()
 
-        self.query_mz_weights = None
-        self.query_mz_offset_weights = None
-        self.query_intensity_weights = None
-        self.query_normalized_intensity_weights = None
-
-        self.target_mz_weights = None
-        self.target_mz_offset_weights = None
-        self.target_intensity_weights = None
-        self.target_normalized_intensity_weights = None
-
 
     def combine_intensity_weights(self, components, grads):
 
@@ -617,7 +650,7 @@ class ScoreByQuery(TunaSim):
             2) reorder intensities by prob of match descending
             3) reweight probabilities according to which transformations  are triggered
             4) consolidate probabilities of match
-            5) sigmoid to map to [0,1]
+            5) clip values below 0
             6) normalize so that all probs sum to 1
         """
 
@@ -669,7 +702,7 @@ class ScoreByQuery(TunaSim):
             
         if self.dif_from_next: 
             dif_from_next_weights = self.smooth_reweight_2('dif_from_next',
-                                                            scores - np.concatenate((scores[1:],[0])), 
+                                                            np.zeros(len(scores)) + scores[0] - scores[1], 
                                                             self.dif_from_next_int,
                                                             self.dif_from_next_a,
                                                             self.dif_from_next_b,
@@ -685,12 +718,15 @@ class ScoreByQuery(TunaSim):
                                                   dif_from_next_weights * none_ind_mask)
 
         if self.dif_from_top: 
+            print(f'yerp: {np.max(scores) - scores}')
             dif_from_top_weights = self.smooth_reweight_2('dif_from_top',
                                                           np.max(scores) - scores, 
                                                             self.dif_from_top_int,
                                                             self.dif_from_top_a,
                                                             self.dif_from_top_b,
-                                                            grads = grads)          
+                                                            grads = grads) 
+
+            print(f'{dif_from_top_weights=}')         
             components.append(dif_from_top_weights)
 
             print(self.grads1)
@@ -706,15 +742,16 @@ class ScoreByQuery(TunaSim):
         print(f'{reweighted_scores=}')
 
         #need sigmoid layer to properly map to [0,1]
-        reweighted_scores = self.sigmoid(reweighted_scores)
-        print(f'{reweighted_scores=}')
+        #add the 0.5 offset so that we can actually have vals close to 0 for normalization
+        # reweighted_scores = self.sigmoid(reweighted_scores - 0.5)
+        # print(f'{reweighted_scores=}')
 
-        if grads:
+        # if grads:
 
-            sig_grad = reweighted_scores * (1 - reweighted_scores)
-            for key, value in self.grads1.items():
+        #     sig_grad = reweighted_scores * (1 - reweighted_scores)
+        #     for key, value in self.grads1.items():
 
-                self.grads1[key] = value * sig_grad
+        #         self.grads1[key] = value * sig_grad
 
         #finally, normalize to 1 and optionally update gradients
         reweighted_scores = reweighted_scores / np.sum(reweighted_scores)

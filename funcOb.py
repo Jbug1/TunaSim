@@ -1,4 +1,4 @@
-
+import TunaSims
 import numpy as np
 from functools import partial
 from typing import Callable, List
@@ -7,7 +7,7 @@ from collections import Counter
 from collections import deque
 
 
-class func_ob:
+class funcOb:
     ''' 
     name: what to call this func ob 
     sim_func: tuna sim function that maps input spectra to 0-1 interval
@@ -22,26 +22,19 @@ class func_ob:
     loss_name: name of func
     solver: name of method to use
     lambdas: update step size
-
     '''
+
     def __init__(
             self,
             name: str,
-            sim_func: Callable,
             init_vals: dict,
             fixed_vals: dict = None,
-            regularization_grad: Callable = lambda x: 0,
-            loss_grad: Callable = lambda x: 2 * x,
-            regularization_name: str = '',
-            loss_name: str = 'l2',
-            solver: str = 'stoch',
+            loss_grad: Callable = lambda x,y: 2 * abs(x - y),
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             momentum_beta: float = 0.8,
             momentum_type: str = None,
-            running_grad_start: float = 1e5,
             bounds: dict = None,
-            tol: float = 0.0,
             balance_classes: bool = True,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
@@ -51,20 +44,13 @@ class func_ob:
             groupby_column: str = None,
     ):
         self.name = name
-        self.sim_func = sim_func
-        self.regularization_name = regularization_name
-        self.regularization_grad = regularization_grad
         self.loss_grad = loss_grad
-        self.loss_name = loss_name
         self.init_vals = init_vals
-        self.solver = solver
         self.bounds = bounds
         self.max_iter = int(max_iter)
         self.momentum_beta = momentum_beta
         self.momentum_type = momentum_type
-        self.running_grad_start = running_grad_start
         self.n_iter = 0
-        self.tol = tol
         self.balance_classes = balance_classes
         self.learning_rate_scheduler = learning_rate_scheduler
         self.learning_beta = learning_beta
@@ -72,6 +58,8 @@ class func_ob:
         self.ad_slope = ad_slope
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
+
+        self.sim_func = TunaSims.ExpandedTuna
 
         self.grad = None
         self.converged = None
@@ -112,9 +100,6 @@ class func_ob:
         inits.update(init_vals)
         self.sim_func = self.sim_func(**inits)
         
-        if self.tol<0:
-            raise ValueError('early stop must be geq 0')
-        
         self.trained_values = copy.deepcopy(self.init_vals)
     
     def fit(self, train_data, verbose=None):
@@ -141,12 +126,7 @@ class func_ob:
             self.n_zeros = counts[0]
             self.n_ones = counts[1]
 
-        if self.solver == 'stoch':
-
-            self.stoch_descent(verbose)
-
-        else:
-            self.scipy_solver_estimate(train_data)
+        self.stoch_descent(verbose)
 
         self.trained_vals = self.init_vals
 
@@ -209,20 +189,13 @@ class func_ob:
                                                 sub.iloc[best_match_index]['precquery'], 
                                                 sub.iloc[best_match_index]['prectarget'])
 
-
-
     def stoch_descent(self, verbose = None):
         """ 
         Implement gradient descent for model tuning
         func must take: match, query, target
         """
 
-        self.running_grad = self.running_grad_start
-
         for _ in range(int(self.max_iter)):
-
-            if self.converged:
-                break
 
             if self.groupby_column is None:
 
@@ -233,9 +206,6 @@ class func_ob:
             
             #update with the score of choice and funcOb's loss function
             self.step(score, pred_val)    
-
-            #update object based on results
-            self.converged = self.running_grad < self.tol
 
             if (_ + 1) % (verbose or 1e12) == 0:
                 print(f'completed {_ + 1} iterations')
@@ -292,12 +262,9 @@ class func_ob:
             return max(1e-7, self.learning_rates[param])
     
     def step(self, score, pred_val, verbose = False):
-            
-        #collector for running grad across all variables
-        running_grad_temp = 0
 
         #convert gradient of f^ to gradient of loss func
-        loss_grad = self.loss_grad(pred_val - score)
+        loss_grad = self.loss_grad(pred_val, score)
     
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
@@ -307,13 +274,7 @@ class func_ob:
             #chain rule to get gradient w.r.t loss func
             grad = self.sim_func.grads1[key] * loss_grad
 
-            #update running gradient
-            running_grad_temp += abs(grad)
-
             current_value = getattr(self.sim_func, key)
-
-            #add gradient w.r.t. regualrization function
-            grad += self.regularization_grad(current_value)
 
             #calculate direction and mag of unweighted step
             unweighted_step = self.calculate_unweighted_step(grad, key)
@@ -324,7 +285,7 @@ class func_ob:
             step = learning_rate * unweighted_step
             updated = current_value - step
 
-            if verbose and self.n_iter % 10 ==0:
+            if verbose and self.n_iter % 10 == 0:
                 print(f"{self.n_iter=}, {key=}, {self.accumulated_gradients[key]}, {self.accumulated_scales[key]}, {current_value=}, {updated=}, {learning_rate=}")
 
             if key in self.bounds:
@@ -338,7 +299,6 @@ class func_ob:
                 print(key, current_value, updated)
                 raise ValueError('updated value is Nan')
 
-        self.running_grad = self.momentum_beta * self.running_grad + (1 - self.momentum_beta) * running_grad_temp/len(self.init_vals)
 
     def trained_func(self):
         if self.trained_vals is None:
@@ -347,3 +307,53 @@ class func_ob:
         else:
             return partial(self.sim_func,**self.trained_vals)
         
+
+class scoreByQueryFunc(funcOb):
+
+    def __init__(
+            self,
+            name: str,
+            init_vals: dict,
+            fixed_vals: dict = None,
+            learning_rates: List[float] = 0.01,
+            max_iter: int = 1e5,
+            momentum_beta: float = 0.8,
+            momentum_type: str = None,
+            bounds: dict = None,
+            learning_rate_scheduler: str = None,
+            learning_beta: float = 0.5,
+            ad_int: float = 0.8,
+            ad_slope: float  = 0.3,
+            scale_holdover_vals: int = 2,
+            groupby_column: str = None,
+    ):
+
+        super().__init__(name = name,
+            init_vals = init_vals,
+            fixed_vals = fixed_vals,
+            learning_rates = learning_rates,
+            max_iter = max_iter,
+            momentum_beta = momentum_beta,
+            momentum_type = momentum_type,
+            bounds = bounds,
+            learning_rate_scheduler = learning_rate_scheduler,
+            learning_beta = learning_beta,
+            ad_int = ad_int,
+            ad_slope = ad_slope,
+            scale_holdover_vals = scale_holdover_vals,
+            groupby_column = groupby_column)
+        
+        self.sim_func = TunaSims.ScoreByQuery
+
+    def loss_grad(self, pred_value, score):
+
+        label_ind = np.where(pred_value[1] == score)
+
+        output = np.zeros(len(pred_value[0]))
+        output[label_ind] = 1 / pred_value[0][label_ind]
+
+        return output
+    
+    def calculate_unweighted_step(self, grad, key):
+
+        return np.dot(self.grads1[key], grad)
