@@ -7,7 +7,7 @@ from collections import Counter
 from collections import deque
 
 
-class funcOb:
+class funcTrainer:
     ''' 
     name: what to call this func ob 
     sim_func: tuna sim function that maps input spectra to 0-1 interval
@@ -32,34 +32,28 @@ class funcOb:
             loss_grad: Callable = lambda x,y: 2 * abs(x - y),
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
-            momentum_beta: float = 0.8,
-            momentum_type: str = None,
             bounds: dict = None,
-            balance_classes: bool = True,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
             ad_int: float = 0.8,
             ad_slope: float  = 0.3,
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
+            balance_column: str = None
     ):
         self.name = name
         self.loss_grad = loss_grad
         self.init_vals = init_vals
         self.bounds = bounds
         self.max_iter = int(max_iter)
-        self.momentum_beta = momentum_beta
-        self.momentum_type = momentum_type
         self.n_iter = 0
-        self.balance_classes = balance_classes
         self.learning_rate_scheduler = learning_rate_scheduler
         self.learning_beta = learning_beta
         self.ad_int = ad_int
         self.ad_slope = ad_slope
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
-
-        self.sim_func = TunaSims.ExpandedTuna
+        self.balance_column = balance_column
 
         self.grad = None
         self.converged = None
@@ -106,18 +100,17 @@ class funcOb:
 
         self.train_data_shape = train_data.shape[0]
 
-        self.converged = False
-        self.running_grad = self.running_grad_start
-
         self.train_data = train_data.sample(frac = 1)
 
-        if self.balance_classes:
+        if self.balance_column is not None:
+
+            self.balance_flag = 0
 
             if self.groupby_column is None:
-                self.train_data.sort_values(by = 'score', inplace = True)
+                self.train_data.sort_values(by = self.balance_column, inplace = True)
 
             else:
-                self.train_data.sort_values(by = ['score', self.groupby_column], inplace = True)
+                self.train_data.sort_values(by = [self.balance_column, self.groupby_column], inplace = True)
 
             counts = Counter(train_data['score'])
             if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
@@ -132,15 +125,17 @@ class funcOb:
 
     def get_index(self):
 
-        if self.balance_classes:
+        if self.balance_column is not None:
 
-            if np.random.binomial(1, 0.5) == 0:
+            if self.balance_flag == 0:
 
                 index = np.random.randint(self.n_zeros)
 
             else:
 
                 index = self.n_zeros + np.random.randint(self.n_ones)
+
+            self.balance_flag = abs(self.balance_flag - 1)
 
         else:
 
@@ -167,16 +162,11 @@ class funcOb:
 
         index = self.get_index()
 
-        if self.train_data.iloc[index]['score'] == 1:
-            self.ones +=1
-        else:
-            self.zeros +=1
-
         #select only what we are interested in grouping
         sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
 
         #in the first round, we want to pick the index with the highest similarity scores
-        sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], x['precquery'], x['prectarget'], grads = False), 
+        sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
                   axis = 1, 
                   result_type = 'expand')
         
@@ -185,9 +175,7 @@ class funcOb:
         best_match_index = np.argmax(sims)
 
         return sub.iloc[best_match_index]['score'], self.sim_func.predict(sub.iloc[best_match_index]['query'], 
-                                                sub.iloc[best_match_index]['target'], 
-                                                sub.iloc[best_match_index]['precquery'], 
-                                                sub.iloc[best_match_index]['prectarget'])
+                                                sub.iloc[best_match_index]['target'])
 
     def stoch_descent(self, verbose = None):
         """ 
@@ -211,33 +199,6 @@ class funcOb:
                 print(f'completed {_ + 1} iterations')
 
             self.n_iter += 1
-
-    def calculate_unweighted_step(self, grad, param):
-
-        if self.momentum_type is None:
-
-                step = grad
-    
-        elif self.momentum_type == 'simple':
-
-            #first calculate the new step which takes accumulated grad into consideration
-            step = (self.momentum_beta * self.accumulated_gradients[param]) + (1 - self.momentum_beta) * grad
-            
-            #update accumulated_gradient
-            self.accumulated_gradient[param] = step
-            
-        elif self.momentum_type == 'nag':
-
-            adjustment = (1 - self.momentum_beta) * (grad)
-            overshoot = (self.momentum_beta * self.accumulated_gradients[param]) + adjustment
-
-            #by adjusting the grad for beta again, we can get the next round step in
-            # the end result will be wrong but we could always just take the overshoot back out...who cares
-            step = adjustment + self.momentum_beta * overshoot
-
-            self.accumulated_gradients[param] = overshoot
-
-        return step
     
     def calculate_learning_rate(self, param, grad):
 
@@ -272,18 +233,14 @@ class funcOb:
         for key in self.init_vals:
 
             #chain rule to get gradient w.r.t loss func
-            grad = self.sim_func.grads1[key] * loss_grad
-
-            current_value = getattr(self.sim_func, key)
-
-            #calculate direction and mag of unweighted step
-            unweighted_step = self.calculate_unweighted_step(grad, key)
+            #use np.dot in order to accomodate vector and float vals
+            step = np.dot(self.sim_func.grads1[key], loss_grad)
                 
             #adjust lambda according to scheduler
-            learning_rate = self.calculate_learning_rate(key, grad)
+            learning_rate = self.calculate_learning_rate(key, step)
 
-            step = learning_rate * unweighted_step
-            updated = current_value - step
+            step = learning_rate * step
+            updated = getattr(self.sim_func, key) - step
 
             if verbose and self.n_iter % 10 == 0:
                 print(f"{self.n_iter=}, {key=}, {self.accumulated_gradients[key]}, {self.accumulated_scales[key]}, {current_value=}, {updated=}, {learning_rate=}")
@@ -296,7 +253,6 @@ class funcOb:
                 setattr(self.sim_func, key, updated)
 
             if np.isnan(updated):
-                print(key, current_value, updated)
                 raise ValueError('updated value is Nan')
 
 
@@ -306,9 +262,47 @@ class funcOb:
 
         else:
             return partial(self.sim_func,**self.trained_vals)
+
+class specSimTrainer(funcTrainer):
+
+    def __init__(self,
+            name: str,
+            init_vals: dict,
+            fixed_vals: dict = None,
+            loss_grad: Callable = lambda x,y: 2 * abs(x - y),
+            learning_rates: List[float] = 0.01,
+            max_iter: int = 1e5,
+            bounds: dict = None,
+            learning_rate_scheduler: str = None,
+            learning_beta: float = 0.5,
+            ad_int: float = 0.8,
+            ad_slope: float  = 0.3,
+            scale_holdover_vals: int = 2,
+            groupby_column: str = None,
+            balance_column: str = None):
+        
+        self.sim_func = TunaSims.speedyTuna
+        
+        super().__init__(
+            name = name,
+            init_vals = init_vals,
+            fixed_vals = fixed_vals,
+            loss_grad = loss_grad,
+            learning_rates = learning_rates,
+            max_iter = max_iter,
+            bounds = bounds,
+            learning_rate_scheduler = learning_rate_scheduler,
+            learning_beta = learning_beta,
+            ad_int = ad_int,
+            ad_slope = ad_slope,
+            scale_holdover_vals = scale_holdover_vals,
+            groupby_column = groupby_column,
+            balance_column = balance_column
+        )
+
         
 
-class scoreByQueryFunc(funcOb):
+class scoreByQueryTrainer(funcTrainer):
 
     def __init__(
             self,
@@ -317,8 +311,6 @@ class scoreByQueryFunc(funcOb):
             fixed_vals: dict = None,
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
-            momentum_beta: float = 0.8,
-            momentum_type: str = None,
             bounds: dict = None,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
@@ -327,14 +319,14 @@ class scoreByQueryFunc(funcOb):
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
     ):
+        
+        self.sim_func = TunaSims.ScoreByQuery
 
         super().__init__(name = name,
             init_vals = init_vals,
             fixed_vals = fixed_vals,
             learning_rates = learning_rates,
             max_iter = max_iter,
-            momentum_beta = momentum_beta,
-            momentum_type = momentum_type,
             bounds = bounds,
             learning_rate_scheduler = learning_rate_scheduler,
             learning_beta = learning_beta,
@@ -343,7 +335,7 @@ class scoreByQueryFunc(funcOb):
             scale_holdover_vals = scale_holdover_vals,
             groupby_column = groupby_column)
         
-        self.sim_func = TunaSims.ScoreByQuery
+        
 
     def loss_grad(self, pred_value, score):
 
@@ -353,7 +345,3 @@ class scoreByQueryFunc(funcOb):
         output[label_ind] = 1 / pred_value[0][label_ind]
 
         return output
-    
-    def calculate_unweighted_step(self, grad, key):
-
-        return np.dot(self.grads1[key], grad)

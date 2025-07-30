@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import warnings
 warnings.filterwarnings("ignore")
 
-
 @dataclass
 class TunaSim:
 
@@ -56,36 +55,6 @@ class TunaSim:
 
         return res
     
-    def smooth_reweight_2(self,
-                          name,
-                          array,
-                          intercept,
-                          a,
-                          b,
-                          grads = True):
-        
-        """ flexible exponenet simple reweight"""
-        
-        b_component = np.power(array, b)
-        combined = a * b_component
-        res = intercept + combined
-
-        if grads:
-
-            #set intercept grad
-            grad = np.ones(len(array))
-            self.grads1[f'{name}_int'] = grad
-
-            #set a grad
-            grad = b_component
-            self.grads1[f'{name}_a'] = grad
-
-            #set b grad
-            grad = combined * np.log(array)
-            self.grads1[f'{name}_b'] = grad
-
-        return res
-    
     @staticmethod
     def sigmoid(z):
     
@@ -98,7 +67,9 @@ class TunaSim:
                                   query_names,
                                   target_names,
                                   grads):
-
+        
+        self.query_components = query_components
+        self.target_components = target_components
 
         if len(query_components) > 1:
 
@@ -143,6 +114,10 @@ class TunaSim:
 
                     #     new_val = val * (aggregated / getattr(self, '_'.join(key.split('_')[:-1]) + '_weights'))
                     #     self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
+
+        else:
+            query_components = query_components[0]
+            target_components = target_components[0]
 
         #self.nonzero indices set here
         self.nonzero_indices = np.where((query_components != 0) | (target_components != 0))[0]
@@ -211,7 +186,7 @@ class TunaSim:
                 if side is None:
                     var = trigger
                 else:
-                    var = f'{trigger}_{side}'
+                    var = f'{side}_{trigger}'
 
                 setattr(self, var, False)
                 for variable in ['int','a','b']:
@@ -221,7 +196,7 @@ class TunaSim:
                         #set the proper side to let us know to compute values and track derivatives
                         #set unweighted to false if at least one is true
                         if side is not None:
-                            setattr(self, f'{trigger}_{side}', True)
+                            setattr(self, var, True)
 
                         else:
                             setattr(self, trigger, True)
@@ -248,77 +223,96 @@ class TunaSim:
         query_components = list()
         target_components = list()
 
+        query_names = list()
+        target_names = list()
+
         #get reweight based on raw mz values
-        if self.mz_query:
-            query_components.append(self.smooth_reweight_2('query_mz', 
+        if self.query_mz:
+            query_components.append(self.smooth_reweight('query_mz', 
                                                          query[:,0]/1000,
                                                         self.query_mz_int,
                                                         self.query_mz_a,
                                                         self.query_mz_b,
                                                         grads = grads))
             
-        if self.mz_target:           
-            target_components.append(self.smooth_reweight_2('target_mz',
+            query_names.append('query_mz')
+            
+        if self.target_mz:           
+            target_components.append(self.smooth_reweight('target_mz',
                                                           target[:,0]/1000, 
                                                             self.target_mz_int,
                                                             self.target_mz_a,
                                                             self.target_mz_b,
                                                             grads = grads))
+            
+            target_names.append('target_mz')
         
         #grab weights for spectra as precursor offset
-        if self.mz_offset_query:
-            query_components.append(self.smooth_reweight_2('query_mz_offset',
+        if self.query_mz_offset:
+            query_components.append(self.smooth_reweight('query_mz_offset',
                                                                 (query[:,0] - prec_query) / 1000, 
                                                                 self.query_mz_offset_int,
                                                                 self.query_mz_offset_a,
                                                                 self.query_mz_offset_b,
                                                                 grads = grads))
             
-        if self.mz_offset_target:   
-            target_components.append(self.smooth_reweight_2('target_mz_offset',
+            query_names.append('query_mz_offset')
+            
+        if self.target_mz_offset:   
+            target_components.append(self.smooth_reweight('target_mz_offset',
                                                                  (target[:,0] - prec_target) / 1000, 
                                                                  self.target_mz_offset_int,
                                                                 self.target_mz_offset_a,
                                                                 self.target_mz_offset_b,
                                                                 grads = grads))
+            
+            target_names.append('target_mz_offset')
         
         #as a function of intensities
-        if self.intensity_query:
-            query_components.append(self.smooth_reweight_2('query_intensity',
+        if self.query_intensity:
+            query_components.append(self.smooth_reweight('query_intensity',
                                                                 query[:,1] / np.max(query[:,1]), 
                                                                 self.query_intensity_int,
                                                                 self.query_intensity_a,
                                                                 self.query_intensity_b,
                                                                 grads = grads))
             
-        if self.intensity_target:
-            target_components.append(self.smooth_reweight_2('target_intensity',
+            query_names.append('query_intensity')
+            
+        if self.target_intensity:
+            target_components.append(self.smooth_reweight('target_intensity',
                                                                 target[:,1] / np.max(target[:,1]),
                                                                 self.target_intensity_int,
                                                                 self.target_intensity_a,
                                                                 self.target_intensity_b,
                                                                 grads = grads))
+            
+            target_names.append('target_intensity')
         
         #as a function of normalized intensities
-        if self.normalized_intensity_query:
-            query_components.append(self.smooth_reweight_2('query_normalized_intensity',
+        if self.query_normalized_intensity:
+            query_components.append(self.smooth_reweight('query_normalized_intensity',
                                                                            query[:,1] /np.sum(query[:,1]), 
                                                                             self.query_normalized_intensity_int,
                                                                             self.query_normalized_intensity_a,
                                                                             self.query_normalized_intensity_b,
                                                                             grads = grads))
             
-        if self.normalized_intensity_target:  
-            target_components.append(self.smooth_reweight_2('target_normalized_intensity',
+            query_names.append('query_normalized_intensity')
+            
+        if self.target_normalized_intensity:  
+            target_components.append(self.smooth_reweight('target_normalized_intensity',
                                                                             target[:,1] / np.sum(target[:,1]), 
                                                                             self.target_normalized_intensity_int,
                                                                             self.target_normalized_intensity_a,
                                                                             self.target_normalized_intensity_b,
                                                                             grads = grads))
+            
+            target_names.append('target_normalized_intensity')
 
        
         #combine components for intensities and return
-        return self.combine_intensity_weights(query_components, target_components, grads)
+        return self.combine_intensity_weights(query_components, target_components, query_names, target_names, grads)
     
 @dataclass
 class ExpandedTuna(TunaSim):
@@ -380,10 +374,7 @@ class ExpandedTuna(TunaSim):
 
     def __post_init__(self):
 
-        try:
-            self.set_weight_triggers()
-        except:
-            pass
+        self.set_weight_triggers()
 
     def predict(self, query, target, prec_query = None, prec_target = None, grads = True):
         ''' 
@@ -539,6 +530,236 @@ class ExpandedTuna(TunaSim):
                     self.grads1[key] = value
 
         return score
+    
+class speedyTuna(TunaSim):
+
+    def __init__(self,
+                query_intensity_a: float = None,
+                query_intensity_b: float = None,
+                target_intensity_a: float = None,
+                target_intensity_b: float = None,
+                dif_a: float = 0,
+                dif_b: float= 1,
+                mult_a: float = 0,
+                mult_b: float = 1,
+                add_norm_int: float= 0,
+                add_norm_a: float= 1,
+                add_norm_b: float = 0,
+                ms2_da: float = 0.05,
+                ms2_ppm: float = None):
+        
+        super().__init__()
+
+        self.query_intensity_a = query_intensity_a
+        self.query_intensity_b = query_intensity_b
+        self.target_intensity_a = target_intensity_a
+        self.target_intensity_b = target_intensity_b
+        self.dif_a = dif_a
+        self.dif_b = dif_b
+        self.mult_a = mult_a
+        self.mult_b = mult_b
+        self.add_norm_int = add_norm_int
+        self.add_norm_a = add_norm_a
+        self.add_norm_b = add_norm_b
+        self.ms2_da = ms2_da
+        self.ms2_ppm = ms2_ppm
+
+        self.grads1 = dict()
+        
+    def smooth_reweight(self,
+                          name,
+                          array,
+                          grads = True):
+        
+        """ flexible exponenet simple reweight"""
+        
+        b_component = np.power(array, self.target_intensity_b)
+        res = self.target_intensity_a * b_component
+
+        zero_inds = np.logical_or(res <= 0, array == 0)
+        res[zero_inds] = 0
+
+        if grads:
+
+            #set a grad
+            grad = b_component
+            grad[zero_inds] = 0
+            self.grads1[f'{name}_a'] = grad
+
+            #set b grad
+            grad = res * np.log(array)
+            grad[zero_inds] = 0
+            self.grads1[f'{name}_b'] = grad
+
+        return res
+        
+    def predict(self, query, target, grads = True):
+        ''' 
+        this function will yield a [0,1] interval similarity prediction
+        predict also sets the values of potentially relevant gradint calculation parameters,
+        and is therefore analagous to forward pass before backprop
+        '''
+
+        #reset gradients if necessary
+        if grads:
+            self.grads1 = dict()
+            self.grads2 = dict()
+
+        #match peaks...will ensure same number for both specs
+        #same number is easier for grad but could be worth changing in future
+        matched = tools_fast.match_spectrum(query,
+                                            target,
+                                            ms2_da = self.ms2_da,
+                                            ms2_ppm = self.ms2_ppm)
+        
+        
+        query = matched[:,:2] / np.sum(matched[:,:2])
+        target = matched[:,[0,2]] / np.sum(matched[:,[0,2]])
+        
+        #set reweighted query and target and update reweight param gradients
+        #intensities only from here on out
+        query = self.smooth_reweight('query_intensity', query)
+        target = self.smooth_reweight('target_intensity', target)
+
+        #generate uncollapsed intensity combining functions
+        difs = query - target
+        difs_abs = np.abs(difs)
+        mults = query * target
+        add = query + target
+
+        self.difs = difs
+        self.mults = mults
+        self.add = add
+
+        #generate expanded terms
+        expanded_difs = self.dif_a * np.power(difs_abs, self.dif_b)
+        expanded_mults = self.mult_a * np.power(mults, self.mult_b)
+        add_norm = self.add_norm_a * np.power(add, self.add_norm_b)
+
+        self.expanded_difs = expanded_difs
+        self.expanded_mults = expanded_mults
+        self.mults = mults
+        self.add_norm = add_norm
+
+        dif_b = (expanded_difs / add_norm) * np.log(difs_abs)
+        dif_b = np.nan_to_num(dif_b, nan=0.0, posinf=0.0, neginf=0.0)
+
+        mult_b = (expanded_mults / add_norm) * np.log(mults)
+        mult_b = np.nan_to_num(mult_b, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        add_b = np.sum(-((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a)
+        add_b = np.nan_to_num(add_b, nan=0.0, posinf=0.0, neginf=0.0)
+
+        score = self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
+        
+        #very messy cacluation of terms, going for efficiency with intermediate results here
+        #slight adjustment to take care of infinite grads...these result from no difference and therefore will be set to 0 anyways
+        #calcualte gradient for similarity score params of dif and mult a(R -> R)
+        if grads:
+
+            #calculate sim parameter gradients
+            dif_a_grad = np.sum(expanded_difs / (self.dif_a * add_norm))
+            mult_a_grad = np.sum(expanded_mults / (self.mult_a * add_norm))
+
+            dif_b_grad = np.sum(dif_b)
+            mult_b_grad = np.sum(mult_b)
+
+            add_norm_a_grad = np.sum(-(expanded_difs + expanded_mults)/ self.add_norm_a**2 * add)
+            add_norm_b_grad = add_b
+
+            #calculate gradients w.r.t. each side of input
+            dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
+            dif_grad_q = np.nan_to_num(dif_grad_q, nan=0.0, posinf=0.0, neginf=0.0)
+            dif_grad_t = -dif_grad_q
+
+            mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
+            mult_grad = np.nan_to_num(mult_grad, nan=0.0, posinf=0.0, neginf=0.0)
+            mult_grad_q = mult_grad * target
+            mult_grad_t = mult_grad * query
+
+            add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
+            add_grad = np.nan_to_num(add_grad, nan=0.0, posinf=0.0, neginf=0.0)
+            second_term = (expanded_difs + expanded_mults) * add_grad
+            add_norm_square = np.power(add_norm, 2)
+
+            #gradients of score w.r.t. query and target...for passing down reweight param grads
+            query_grad = ((dif_grad_q + mult_grad_q) * add_norm - second_term) / add_norm_square
+            query_grad = np.nan_to_num(query_grad, nan=0.0, posinf=0.0, neginf=0.0)
+            target_grad = ((dif_grad_t + mult_grad_t) * add_norm - second_term) / add_norm_square
+            target_grad = np.nan_to_num(target_grad, nan=0.0, posinf=0.0, neginf=0.0)
+         
+            sig_grad = score * (1 - score)
+
+            #final step is to calculate grads of score output w.r.t. all reweight params
+            for key, value in self.grads1.items():
+
+                if key.split('_')[0] == 'query':
+                    side = query_grad
+                else:
+                    side = target_grad
+
+                #remember to only apply to indices that were not clipped
+                score_grad = np.sum(value * side)
+
+                #chain rule f'(g(x)) is grad of query or target
+                #g'(x) is grad w.r.t. whichever parameter
+                self.grads1[key] = sig_grad * score_grad
+
+            sim_grad_names = ['dif_a','dif_b', 'mult_a', 'mult_b', 'add_norm_a', 'add_norm_b']
+            sim_grads = [dif_a_grad, dif_b_grad, mult_a_grad, mult_b_grad, add_norm_a_grad, add_norm_b_grad]
+
+            for key, value in zip(sim_grad_names, sim_grads):
+                        
+                    self.grads1[key] =  sig_grad * value
+
+        return score
+    
+    def predict_for_dataset(self, dataset):
+
+        return dataset.apply(lambda x: self.predict(x['query'], 
+                                            x['target'],
+                                            grads = False),
+                                            axis=1,
+                                            result_type="expand")
+    
+    def single_match_grad(self):
+
+        index = self.get_index()
+
+        if self.train_data.iloc[index]['score'] == 1:
+            self.ones +=1
+        else:
+            self.zeros +=1
+
+        #call predict method from Tuna Sim which updates gradients
+        return self.train_data.iloc[index]['score'], self.sim_func.predict(self.train_data.iloc[index]['query'], 
+                                                self.train_data.iloc[index]['target'])
+    
+    def grouped_match_grad(self):
+
+        index = self.get_index()
+
+        #select only what we are interested in grouping
+        sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
+
+        #in the first round, we want to pick the index with the highest similarity scores
+        sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
+                  axis = 1, 
+                  result_type = 'expand')
+        
+        
+        #then, update gradients based on the best match for this grouping column value
+        best_match_index = np.argmax(sims)
+
+        return sub.iloc[best_match_index]['score'], self.sim_func.predict(sub.iloc[best_match_index]['query'], 
+                                                sub.iloc[best_match_index]['target'], 
+                                                sub.iloc[best_match_index]['precquery'], 
+                                                sub.iloc[best_match_index]['prectarget'])
+    
+
+
+    
+
 
     
 @dataclass
@@ -576,6 +797,36 @@ class ScoreByQuery(TunaSim):
         self.grads2 = dict()
 
         self.set_weight_triggers()
+
+    def smooth_reweight(self,
+                          name,
+                          array,
+                          intercept,
+                          a,
+                          b,
+                          grads = True):
+        
+        """ flexible exponenet simple reweight"""
+        
+        b_component = np.power(array, b)
+        combined = a * b_component
+        res = intercept + combined
+
+        if grads:
+
+            #set intercept grad
+            grad = np.ones(len(array))
+            self.grads1[f'{name}_int'] = grad
+
+            #set a grad
+            grad = b_component
+            self.grads1[f'{name}_a'] = grad
+
+            #set b grad
+            grad = combined * np.log(array)
+            self.grads1[f'{name}_b'] = grad
+
+        return res
 
 
     def combine_intensity_weights(self, components, grads):
@@ -683,7 +934,7 @@ class ScoreByQuery(TunaSim):
         #collector to hold all component vectors
         components = list()
         if self.raw_scores:
-            raw_score_weights = self.smooth_reweight_2('raw_scores', 
+            raw_score_weights = self.smooth_reweight('raw_scores', 
                                                          scores,
                                                         self.raw_scores_int,
                                                         self.raw_scores_a,
@@ -701,7 +952,7 @@ class ScoreByQuery(TunaSim):
                                                   raw_score_weights * none_ind_mask)
             
         if self.dif_from_next: 
-            dif_from_next_weights = self.smooth_reweight_2('dif_from_next',
+            dif_from_next_weights = self.smooth_reweight('dif_from_next',
                                                             np.zeros(len(scores)) + scores[0] - scores[1], 
                                                             self.dif_from_next_int,
                                                             self.dif_from_next_a,
@@ -719,7 +970,7 @@ class ScoreByQuery(TunaSim):
 
         if self.dif_from_top: 
             print(f'yerp: {np.max(scores) - scores}')
-            dif_from_top_weights = self.smooth_reweight_2('dif_from_top',
+            dif_from_top_weights = self.smooth_reweight('dif_from_top',
                                                           np.max(scores) - scores, 
                                                             self.dif_from_top_int,
                                                             self.dif_from_top_a,
