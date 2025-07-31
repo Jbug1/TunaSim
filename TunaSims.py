@@ -543,7 +543,7 @@ class speedyTuna(TunaSim):
                 mult_a: float = 0,
                 mult_b: float = 1,
                 add_norm_int: float= 0,
-                add_norm_a: float= 1,
+                add_norm_a: float = 1,
                 add_norm_b: float = 0,
                 ms2_da: float = 0.05,
                 ms2_ppm: float = None):
@@ -564,17 +564,34 @@ class speedyTuna(TunaSim):
         self.ms2_da = ms2_da
         self.ms2_ppm = ms2_ppm
 
+        #reset gradients if necessary
         self.grads1 = dict()
+        self.grads2 = dict()
+
+        self.grad_names = ['dif_a',
+                          'dif_b', 
+                          'mult_a', 
+                          'mult_b', 
+                          'add_norm_int', 
+                          'add_norm_a', 
+                          'add_norm_b',
+                          'query_intensity_a',
+                          'query_intensity_b',
+                          'target_intensity_a',
+                          'target_intensity_b' ]
+        
+        self.grad_vals = np.zeros(11)
         
     def smooth_reweight(self,
-                          name,
                           array,
+                          a,
+                          b,
                           grads = True):
         
         """ flexible exponenet simple reweight"""
         
-        b_component = np.power(array, self.target_intensity_b)
-        res = self.target_intensity_a * b_component
+        b_component = np.power(array, b)
+        res = a * b_component
 
         zero_inds = np.logical_or(res <= 0, array == 0)
         res[zero_inds] = 0
@@ -582,14 +599,14 @@ class speedyTuna(TunaSim):
         if grads:
 
             #set a grad
-            grad = b_component
-            grad[zero_inds] = 0
-            self.grads1[f'{name}_a'] = grad
+            a_grad = b_component
+            a_grad[zero_inds] = 0
 
             #set b grad
-            grad = res * np.log(array)
-            grad[zero_inds] = 0
-            self.grads1[f'{name}_b'] = grad
+            b_grad = res * np.log(array)
+            b_grad[zero_inds] = 0
+
+            return res, a_grad, b_grad
 
         return res
         
@@ -600,11 +617,6 @@ class speedyTuna(TunaSim):
         and is therefore analagous to forward pass before backprop
         '''
 
-        #reset gradients if necessary
-        if grads:
-            self.grads1 = dict()
-            self.grads2 = dict()
-
         #match peaks...will ensure same number for both specs
         #same number is easier for grad but could be worth changing in future
         matched = tools_fast.match_spectrum(query,
@@ -612,14 +624,34 @@ class speedyTuna(TunaSim):
                                             ms2_da = self.ms2_da,
                                             ms2_ppm = self.ms2_ppm)
         
-        
-        query = matched[:,:2] / np.sum(matched[:,:2])
-        target = matched[:,[0,2]] / np.sum(matched[:,[0,2]])
+        #only need intensities
+        query = matched[:,1] / np.sum(matched[:,1])
+        target = matched[:,2] / np.sum(matched[:,2])
         
         #set reweighted query and target and update reweight param gradients
         #intensities only from here on out
-        query = self.smooth_reweight('query_intensity', query)
-        target = self.smooth_reweight('target_intensity', target)
+        if grads:
+            query, q_int_a_grad, q_int_b_grad  = self.smooth_reweight(query, 
+                                                                      self.query_intensity_a, 
+                                                                      self.query_intensity_b, 
+                                                                      grads = True)
+            
+            target, t_int_a_grad, t_int_b_grad = self.smooth_reweight(target, 
+                                                                      self.target_intensity_a, 
+                                                                      self.target_intensity_b, 
+                                                                      grads = True)
+            
+        else:
+            query = self.smooth_reweight(query, 
+                                         self.query_intensity_a, 
+                                         self.query_intensity_b, 
+                                         grads = False)
+            
+            target = self.smooth_reweight(target, 
+                                          self.target_intensity_a, 
+                                          self.target_intensity_b, 
+                                          grads = False)
+            
 
         #generate uncollapsed intensity combining functions
         difs = query - target
@@ -627,30 +659,10 @@ class speedyTuna(TunaSim):
         mults = query * target
         add = query + target
 
-        self.difs = difs
-        self.mults = mults
-        self.add = add
-
         #generate expanded terms
-        expanded_difs = self.dif_a * np.power(difs_abs, self.dif_b)
-        expanded_mults = self.mult_a * np.power(mults, self.mult_b)
-        add_norm = self.add_norm_a * np.power(add, self.add_norm_b)
-
-        self.expanded_difs = expanded_difs
-        self.expanded_mults = expanded_mults
-        self.mults = mults
-        self.add_norm = add_norm
-
-        dif_b = (expanded_difs / add_norm) * np.log(difs_abs)
-        dif_b = np.nan_to_num(dif_b, nan=0.0, posinf=0.0, neginf=0.0)
-
-        mult_b = (expanded_mults / add_norm) * np.log(mults)
-        mult_b = np.nan_to_num(mult_b, nan=0.0, posinf=0.0, neginf=0.0)
-        
-        add_b = np.sum(-((expanded_difs + expanded_mults) * np.power(add, -self.add_norm_b) * np.log(add)) / self.add_norm_a)
-        add_b = np.nan_to_num(add_b, nan=0.0, posinf=0.0, neginf=0.0)
-
-        score = self.sigmoid(np.sum((expanded_difs + expanded_mults) / add_norm))
+        add_norm = self.add_norm_int + self.add_norm_a * np.power(add, self.add_norm_b)
+        dif_abs_term = np.power(difs_abs, self.dif_b) / add_norm
+        mult_term = np.power(mults, self.mult_b) / add_norm
         
         #very messy cacluation of terms, going for efficiency with intermediate results here
         #slight adjustment to take care of infinite grads...these result from no difference and therefore will be set to 0 anyways
@@ -658,18 +670,35 @@ class speedyTuna(TunaSim):
         if grads:
 
             #calculate sim parameter gradients
-            dif_a_grad = np.sum(expanded_difs / (self.dif_a * add_norm))
-            mult_a_grad = np.sum(expanded_mults / (self.mult_a * add_norm))
+            self.grad_vals[0] = np.sum(dif_abs_term) #dif_a
 
-            dif_b_grad = np.sum(dif_b)
-            mult_b_grad = np.sum(mult_b)
+            #update dif term
+            dif_abs_term = self.dif_a * dif_abs_term
 
-            add_norm_a_grad = np.sum(-(expanded_difs + expanded_mults)/ self.add_norm_a**2 * add)
-            add_norm_b_grad = add_b
+            self.grad_vals[1] = np.sum(np.nan_to_num(dif_abs_term * np.log(difs_abs), neginf = 0.0)) #dif_b
+             
+            self.grad_vals[2] = np.sum(mult_term) #mult_a
 
-            #calculate gradients w.r.t. each side of input
+            mult_term = self.mult_a * mult_term
+
+            self.grad_vals[3]= np.sum(np.nan_to_num(mult_term * np.log(mults), neginf = 0.0)) #mult_b
+
+            #since all the add norm gradients build on each other, we can gain a speedup
+            #chain rule
+            numerator = dif_abs_term + mult_term
+
+            add_grad = -numerator / add_norm
+            self.grad_vals[4] = np.sum(add_grad) #add_norm_int
+
+            add_grad = add_grad * np.power(add, self.add_norm_b)
+            self.grad_vals[5] = np.sum(add_grad) #add_norm_a
+
+            add_grad = add_grad * self.add_norm_a * np.log(add)
+            self.grad_vals[6] = np.sum(add_grad) #add_norm_b
+
+            #calculate component gradients w.r.t. each side of input
+            #chain rule
             dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
-            dif_grad_q = np.nan_to_num(dif_grad_q, nan=0.0, posinf=0.0, neginf=0.0)
             dif_grad_t = -dif_grad_q
 
             mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
@@ -677,40 +706,34 @@ class speedyTuna(TunaSim):
             mult_grad_q = mult_grad * target
             mult_grad_t = mult_grad * query
 
-            add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
-            add_grad = np.nan_to_num(add_grad, nan=0.0, posinf=0.0, neginf=0.0)
-            second_term = (expanded_difs + expanded_mults) * add_grad
+            #add grad will be the same for query and target
+            #chain rule
             add_norm_square = np.power(add_norm, 2)
-
+            add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1) /add_norm_square
+            
             #gradients of score w.r.t. query and target...for passing down reweight param grads
-            query_grad = ((dif_grad_q + mult_grad_q) * add_norm - second_term) / add_norm_square
-            query_grad = np.nan_to_num(query_grad, nan=0.0, posinf=0.0, neginf=0.0)
-            target_grad = ((dif_grad_t + mult_grad_t) * add_norm - second_term) / add_norm_square
-            target_grad = np.nan_to_num(target_grad, nan=0.0, posinf=0.0, neginf=0.0)
-         
-            sig_grad = score * (1 - score)
+            #quotient rule and combining terms
+            second_term = (mult_term + dif_abs_term) * add_norm
+            query_grad = ((mult_grad_q + dif_grad_q) * add_norm - second_term) / add_norm_square 
+            target_grad  = ((mult_grad_t + dif_grad_t) * add_norm - second_term)/ add_norm_square
 
-            #final step is to calculate grads of score output w.r.t. all reweight params
-            for key, value in self.grads1.items():
+            #get the gradient of score w.r.t reweight params
+            #chain rule
+            self.grad_vals[7] = np.sum(q_int_a_grad * query_grad) #query intensity a
+            self.grad_vals[8] = np.sum(q_int_b_grad * query_grad) #query intensity b
 
-                if key.split('_')[0] == 'query':
-                    side = query_grad
-                else:
-                    side = target_grad
+            self.grad_vals[9] = np.sum(t_int_a_grad * target_grad) #target intensity a
+            self.grad_vals[10] = np.sum(t_int_b_grad * target_grad) #target intensity b
 
-                #remember to only apply to indices that were not clipped
-                score_grad = np.sum(value * side)
+            #finally calculate score
+            score = self.sigmoid(np.sum(dif_abs_term + mult_term))
 
-                #chain rule f'(g(x)) is grad of query or target
-                #g'(x) is grad w.r.t. whichever parameter
-                self.grads1[key] = sig_grad * score_grad
+            #adjust gradients for final sigmoid layer
+            #chain rule
+            self.grad_vals = self.grad_vals * score * (1 - score)
 
-            sim_grad_names = ['dif_a','dif_b', 'mult_a', 'mult_b', 'add_norm_a', 'add_norm_b']
-            sim_grads = [dif_a_grad, dif_b_grad, mult_a_grad, mult_b_grad, add_norm_a_grad, add_norm_b_grad]
-
-            for key, value in zip(sim_grad_names, sim_grads):
-                        
-                    self.grads1[key] =  sig_grad * value
+        else:
+            score = self.sigmoid(self.dif_a * dif_abs_term + self.mult_a * mult_term)
 
         return score
     

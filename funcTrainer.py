@@ -29,7 +29,7 @@ class funcTrainer:
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = lambda x,y: 2 * abs(x - y),
+            loss_grad: Callable = lambda x,y: 2 * (x - y),
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
@@ -54,12 +54,6 @@ class funcTrainer:
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
         self.balance_column = balance_column
-
-        self.grad = None
-        self.converged = None
-        self.running_grad = None
-        self.trained_vals = None
-        self.objective_value = None
 
         self.ones = 0
         self.zeros = 0
@@ -135,6 +129,7 @@ class funcTrainer:
 
                 index = self.n_zeros + np.random.randint(self.n_ones)
 
+            #we want this to rotate between zero and 1
             self.balance_flag = abs(self.balance_flag - 1)
 
         else:
@@ -175,7 +170,8 @@ class funcTrainer:
         best_match_index = np.argmax(sims)
 
         return sub.iloc[best_match_index]['score'], self.sim_func.predict(sub.iloc[best_match_index]['query'], 
-                                                sub.iloc[best_match_index]['target'])
+                                                                          sub.iloc[best_match_index]['target'],
+                                                                          grads = True)
 
     def stoch_descent(self, verbose = None):
         """ 
@@ -226,6 +222,7 @@ class funcTrainer:
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val, score)
+        print(f'{loss_grad=}')
     
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
@@ -333,8 +330,7 @@ class scoreByQueryTrainer(funcTrainer):
             ad_int = ad_int,
             ad_slope = ad_slope,
             scale_holdover_vals = scale_holdover_vals,
-            groupby_column = groupby_column)
-        
+            groupby_column = groupby_column)  
         
 
     def loss_grad(self, pred_value, score):

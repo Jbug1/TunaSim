@@ -1,5 +1,5 @@
 import TunaSims
-from funcOb import func_ob
+from funcTrainer import func_ob
 import copy
 
 import numpy as np
