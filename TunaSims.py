@@ -733,7 +733,7 @@ class speedyTuna(TunaSim):
             self.grad_vals = self.grad_vals * score * (1 - score)
 
         else:
-            score = self.sigmoid(self.dif_a * dif_abs_term + self.mult_a * mult_term)
+            score = self.sigmoid(np.sum(self.dif_a * dif_abs_term + self.mult_a * mult_term))
 
         return score
     
@@ -744,47 +744,8 @@ class speedyTuna(TunaSim):
                                             grads = False),
                                             axis=1,
                                             result_type="expand")
-    
-    def single_match_grad(self):
 
-        index = self.get_index()
-
-        if self.train_data.iloc[index]['score'] == 1:
-            self.ones +=1
-        else:
-            self.zeros +=1
-
-        #call predict method from Tuna Sim which updates gradients
-        return self.train_data.iloc[index]['score'], self.sim_func.predict(self.train_data.iloc[index]['query'], 
-                                                self.train_data.iloc[index]['target'])
-    
-    def grouped_match_grad(self):
-
-        index = self.get_index()
-
-        #select only what we are interested in grouping
-        sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
-
-        #in the first round, we want to pick the index with the highest similarity scores
-        sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
-                  axis = 1, 
-                  result_type = 'expand')
-        
-        
-        #then, update gradients based on the best match for this grouping column value
-        best_match_index = np.argmax(sims)
-
-        return sub.iloc[best_match_index]['score'], self.sim_func.predict(sub.iloc[best_match_index]['query'], 
-                                                sub.iloc[best_match_index]['target'], 
-                                                sub.iloc[best_match_index]['precquery'], 
-                                                sub.iloc[best_match_index]['prectarget'])
-    
-
-
-    
-
-
-    
+ 
 @dataclass
 class ScoreByQuery(TunaSim):
 

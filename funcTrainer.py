@@ -55,8 +55,7 @@ class funcTrainer:
         self.groupby_column = groupby_column
         self.balance_column = balance_column
 
-        self.ones = 0
-        self.zeros = 0
+        self.balance_flag = 0
 
         #set scheduling dictionaries
         self.accumulated_gradients = {key: 0 for key in self.init_vals}
@@ -92,88 +91,126 @@ class funcTrainer:
     
     def fit(self, train_data, verbose=None):
 
-        self.train_data_shape = train_data.shape[0]
+        train_data = train_data.sample(frac = 1)
 
-        self.train_data = train_data.sample(frac = 1)
+        self.build_inds_dict(train_data)
 
-        if self.balance_column is not None:
+        self.stoch_descent(train_data, verbose)
 
-            self.balance_flag = 0
+    def build_inds_dict(self, data):
+        """ 
+        if we are not balancing, we will always sample from the 0 dict
+        """
 
-            if self.groupby_column is None:
-                self.train_data.sort_values(by = self.balance_column, inplace = True)
+        if self.balance_column is None:
+            balances = np.zeros(len(data))
+        else:
+            balances = data[self.balance_column].tolist()
 
-            else:
-                self.train_data.sort_values(by = [self.balance_column, self.groupby_column], inplace = True)
-
-            counts = Counter(train_data['score'])
-            if len(counts) != 2 or counts[0] < 1 or counts[1] < 1:
-                raise ValueError("Can't balance this dataset")
-            
-            self.n_zeros = counts[0]
-            self.n_ones = counts[1]
-
-        self.stoch_descent(verbose)
-
-        self.trained_vals = self.init_vals
-
-    def get_index(self):
-
-        if self.balance_column is not None:
-
-            if self.balance_flag == 0:
-
-                index = np.random.randint(self.n_zeros)
-
-            else:
-
-                index = self.n_zeros + np.random.randint(self.n_ones)
-
-            #we want this to rotate between zero and 1
-            self.balance_flag = abs(self.balance_flag - 1)
+        if self.groupby_column is None:
+            groups = list(range(len(data)))
 
         else:
+            groups = data[self.groupby_column].tolist()
 
-            index = np.random.randint(self.train_data_shape)
-
-        return index
-
-    def single_match_grad(self):
-
-        index = self.get_index()
-
-        if self.train_data.iloc[index]['score'] == 1:
-            self.ones +=1
-        else:
-            self.zeros +=1
-
-        #call predict method from Tuna Sim which updates gradients
-        return self.train_data.iloc[index]['score'], self.sim_func.predict(self.train_data.iloc[index]['query'], 
-                                                self.train_data.iloc[index]['target'], 
-                                                self.train_data.iloc[index]['precquery'], 
-                                                self.train_data.iloc[index]['prectarget'])
+        indices = list(range(len(data)))
     
-    def grouped_match_grad(self):
+        self.num_0 = 0
+        self.num_1 = 0
 
-        index = self.get_index()
+        key_to_ind_0 = dict()
+        key_to_ind_1 = dict()
 
-        #select only what we are interested in grouping
-        sub = self.train_data[self.train_data[self.groupby_column] == self.train_data.iloc[index][self.groupby_column]]
+        self.zeros_dict = dict()
+        self.ones_dict = dict()
+
+        for balance, group, index in zip(balances, groups, indices):
+
+            #this will tell us which dictionary to go to
+            #depending on whether we are balancing on some column or not
+            if balance == 0:
+
+                if group in key_to_ind_0.keys():
+                    
+                    #retrieve key from the conversion dict
+                    num_key = key_to_ind_0[group]
+
+                    #update the zeros dict with index
+                    self.zeros_dict[num_key].append(index)
+                
+                else:
+
+                    #add this key and unique value to the conversion dict
+                    key_to_ind_0[group] = self.num_0
+
+                    #add new key to zeros dict
+                    self.zeros_dict[self.num_0] = [index]
+
+                    #increment counter
+                    self.num_0 += 1
+
+            else:
+
+                if group in key_to_ind_1.keys():
+                    
+                    #retrieve key from the conversion dict
+                    num_key = key_to_ind_1[group]
+
+                    #update the zeros dict with index
+                    self.ones_dict[num_key].append(index)
+                
+                else:
+
+                    #add this key and unique value to the conversion dict
+                    key_to_ind_1[group] = self.num_1
+
+                    #add new key to zeros dict
+                    self.ones_dict[self.num_1] = [index]
+
+                    #increment counter
+                    self.num_1 += 1
+
+        if self.balance_column is None:
+            self.ones_dict = self.zeros_dict
+            self.num_1 = self.num_0
+
+    def get_match_rows(self):
+
+        #flip balance flag
+        self.balance_flag = abs(self.balance_flag - 1)
+
+        if self.balance_flag == 0:
+
+            return self.zeros_dict[np.random.randint(self.num_0)]
+
+        else:
+
+            return self.ones_dict[np.random.randint(self.num_1)]
+
+    def get_match_grad(self, sub_df):
+
+        if len(sub_df) == 0:
+            print('dang')
 
         #in the first round, we want to pick the index with the highest similarity scores
-        sims = sub.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
-                  axis = 1, 
-                  result_type = 'expand')
-        
-        
-        #then, update gradients based on the best match for this grouping column value
-        best_match_index = np.argmax(sims)
+        if sub_df.shape[0] > 1:
 
-        return sub.iloc[best_match_index]['score'], self.sim_func.predict(sub.iloc[best_match_index]['query'], 
-                                                                          sub.iloc[best_match_index]['target'],
+            sims = sub_df.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
+                    axis = 1, 
+                    result_type = 'expand')
+        
+        
+            #then, update gradients based on the best match for this grouping column value
+            best_match_index = np.argmax(sims)
+
+        else:
+            best_match_index = 0
+
+        return sub_df.iloc[best_match_index]['score'], self.sim_func.predict(sub_df.iloc[best_match_index]['query'], 
+                                                                          sub_df.iloc[best_match_index]['target'],
                                                                           grads = True)
 
-    def stoch_descent(self, verbose = None):
+    def stoch_descent(self, train_data, verbose = None):
         """ 
         Implement gradient descent for model tuning
         func must take: match, query, target
@@ -181,12 +218,10 @@ class funcTrainer:
 
         for _ in range(int(self.max_iter)):
 
-            if self.groupby_column is None:
+            index = self.get_match_rows()
 
-                score, pred_val = self.single_match_grad()
-
-            else:
-                score, pred_val = self.grouped_match_grad()
+            #select only what we are interested in grouping and retrieve grads
+            score, pred_val = self.get_match_grad(train_data.iloc[index])
             
             #update with the score of choice and funcOb's loss function
             self.step(score, pred_val)    
@@ -218,29 +253,28 @@ class funcTrainer:
             
             return max(1e-7, self.learning_rates[param])
     
-    def step(self, score, pred_val, verbose = False):
+    def step(self, score, pred_val):
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val, score)
-        print(f'{loss_grad=}')
     
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
         
-        for key in self.init_vals:
+        for key, value in zip(self.sim_func.grad_names, self.sim_func.grad_vals):
+
+            if key not in self.init_vals:
+                continue
 
             #chain rule to get gradient w.r.t loss func
             #use np.dot in order to accomodate vector and float vals
-            step = np.dot(self.sim_func.grads1[key], loss_grad)
+            step = np.dot(value, loss_grad)
                 
             #adjust lambda according to scheduler
             learning_rate = self.calculate_learning_rate(key, step)
 
             step = learning_rate * step
             updated = getattr(self.sim_func, key) - step
-
-            if verbose and self.n_iter % 10 == 0:
-                print(f"{self.n_iter=}, {key=}, {self.accumulated_gradients[key]}, {self.accumulated_scales[key]}, {current_value=}, {updated=}, {learning_rate=}")
 
             if key in self.bounds:
                 bounds = self.bounds[key]
@@ -250,15 +284,7 @@ class funcTrainer:
                 setattr(self.sim_func, key, updated)
 
             if np.isnan(updated):
-                raise ValueError('updated value is Nan')
-
-
-    def trained_func(self):
-        if self.trained_vals is None:
-            raise ValueError('function has not been trained')
-
-        else:
-            return partial(self.sim_func,**self.trained_vals)
+                raise ValueError(f'updated value is Nan for {key, value}')
 
 class specSimTrainer(funcTrainer):
 
@@ -266,7 +292,7 @@ class specSimTrainer(funcTrainer):
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = lambda x,y: 2 * abs(x - y),
+            loss_grad: Callable = lambda x,y: 2 * (x - y),
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
