@@ -189,9 +189,6 @@ class funcTrainer:
 
     def get_match_grad(self, sub_df):
 
-        if len(sub_df) == 0:
-            print('dang')
-
         #in the first round, we want to pick the index with the highest similarity scores
         if sub_df.shape[0] > 1:
 
@@ -261,7 +258,7 @@ class funcTrainer:
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
         
-        for key, value in zip(self.sim_func.grad_names, self.sim_func.grad_vals):
+        for key, value, bounds in zip(self.sim_func.grad_names, self.sim_func.grad_vals, self.bounds):
 
             if key not in self.init_vals:
                 continue
@@ -276,12 +273,8 @@ class funcTrainer:
             step = learning_rate * step
             updated = getattr(self.sim_func, key) - step
 
-            if key in self.bounds:
-                bounds = self.bounds[key]
-                setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
-
-            else:
-                setattr(self.sim_func, key, updated)
+            #set updated value given constraints
+            setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
 
             if np.isnan(updated):
                 raise ValueError(f'updated value is Nan for {key, value}')
@@ -323,6 +316,7 @@ class specSimTrainer(funcTrainer):
             balance_column = balance_column
         )
 
+        self.bounds = [self.bounds[key] for key in self.sim_func.grad_names]
         
 
 class scoreByQueryTrainer(funcTrainer):

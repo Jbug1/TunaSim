@@ -509,9 +509,7 @@ class ExpandedTuna(TunaSim):
 
             query_intensities = prod(query_components)
             target_intensities = prod(target_components)
-
-            print(query_intensities)
-
+            
             #change gradients
             for key, val in self.grads1_int_param.items():
 

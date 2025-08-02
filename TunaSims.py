@@ -698,32 +698,34 @@ class speedyTuna(TunaSim):
 
             #calculate component gradients w.r.t. each side of input
             #chain rule
+            #exclude indices where dif is 0 b.c. no grad at these points
             dif_grad_q = self.dif_a * self.dif_b * np.power(difs_abs, self.dif_b-2) * difs
+            dif_grad_q[np.isinf(dif_grad_q)] = 0
             dif_grad_t = -dif_grad_q
 
             mult_grad = self.mult_a * self.mult_b * np.power(mults, self.mult_b - 1)
-            mult_grad = np.nan_to_num(mult_grad, nan=0.0, posinf=0.0, neginf=0.0)
+            mult_grad[np.isinf(mult_grad)] = 0
             mult_grad_q = mult_grad * target
             mult_grad_t = mult_grad * query
 
             #add grad will be the same for query and target
             #chain rule
-            add_norm_square = np.power(add_norm, 2)
-            add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1) /add_norm_square
+            #exclude indices where mult is 0 b.c. no grad at these points
+            add_grad = self.add_norm_a * self.add_norm_b * np.power(add, self.add_norm_b - 1)
             
             #gradients of score w.r.t. query and target...for passing down reweight param grads
             #quotient rule and combining terms
-            second_term = (mult_term + dif_abs_term) * add_norm
-            query_grad = ((mult_grad_q + dif_grad_q) * add_norm - second_term) / add_norm_square 
-            target_grad  = ((mult_grad_t + dif_grad_t) * add_norm - second_term)/ add_norm_square
+            second_term = (mult_term + dif_abs_term) * add_grad
+            query_grad = (mult_grad_q + dif_grad_q - second_term) / add_norm
+            target_grad  = (mult_grad_t + dif_grad_t - second_term) / add_norm
 
             #get the gradient of score w.r.t reweight params
             #chain rule
-            self.grad_vals[7] = np.sum(q_int_a_grad * query_grad) #query intensity a
-            self.grad_vals[8] = np.sum(q_int_b_grad * query_grad) #query intensity b
+            self.grad_vals[7] = np.nansum(q_int_a_grad * query_grad) #query intensity a
+            self.grad_vals[8] = np.nansum(q_int_b_grad * query_grad) #query intensity b
 
-            self.grad_vals[9] = np.sum(t_int_a_grad * target_grad) #target intensity a
-            self.grad_vals[10] = np.sum(t_int_b_grad * target_grad) #target intensity b
+            self.grad_vals[9] = np.nansum(t_int_a_grad * target_grad) #target intensity a
+            self.grad_vals[10] = np.nansum(t_int_b_grad * target_grad) #target intensity b
 
             #finally calculate score
             score = self.sigmoid(np.sum(dif_abs_term + mult_term))
