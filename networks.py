@@ -88,17 +88,22 @@ class IdentityMatchNetwork:
             test_aggregated_preds.to_csv(f'{self.scratch_path}/tunasims_aggregated_top_test.csv')
             del(test_aggregated_preds)
 
+        #create train aggregated preds
         train_aggregated_preds = self.create_tunasim_aggregated_preds(pd.read_csv(f'{self.scratch_path}/tunasims_top_train.csv'))
         train_aggregated_preds.to_csv(f'{self.scratch_path}/tunasims_aggregated_top_train.csv')
         del(train_aggregated_preds)
 
+        #create val 1 aggregated preds
         val_1_aggregated_preds = self.create_tunasim_aggregated_preds(pd.read_csv(f'{self.scratch_path}/tunasims_top_val_1.csv'))
         val_1_aggregated_preds.to_csv(f'{self.scratch_path}/tunasims_aggregated_top_val_1.csv')
         del(val_1_aggregated_preds)
 
+        #create val 2 aggregated preds
         val_2_aggregated_preds = self.create_tunasim_aggregated_preds(pd.read_csv(f'{self.scratch_path}/tunasims_top_val_2.csv'))
         val_2_aggregated_preds.to_csv(f'{self.scratch_path}/tunasims_aggregated_top_val_2.csv')
         del(val_2_aggregated_preds)
+
+        print(yool)
 
         #fit group adjustment layer
         #train dataset now includes the first validation dataset

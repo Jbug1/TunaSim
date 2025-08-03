@@ -1,10 +1,9 @@
 # conatins funcitons for importing data
 # this should include functions for reading in msps and cleaning/create sim datasets
 import pandas as pd
-#import tools
+from tools_fast import match_spectrum
 import numpy as np
 import scipy
-#import spectral_similarity
 import copy
 import time
 import bisect
@@ -184,14 +183,11 @@ def get_sim_features(query, lib, methods, ms2_da=None, ms2_ppm=None):
     
     return [sims[i] for i in methods]
     
-def create_matches_df_chunk(query_df, 
-                                 target_df, 
-                                 precursor_thresh, 
-                                 max_len, 
-                                 chunk_size, 
-                                 outpath, 
-                                 logpath,
-                                 adduct_match=False):
+def create_matches_df(query_df, 
+                        target_df, 
+                        precursor_thresh, 
+                        max_len, 
+                        outpath):
 
     """
     writes out to folder. No other nonspec info retained
@@ -228,17 +224,19 @@ def create_matches_df_chunk(query_df,
     precursors_neg = target_neg['precursor'].to_numpy()
     for i in range(len(query_df)):
 
-        seen_+=1
-        cores_set.add(query_df.iloc[i]['inchi_base'])
+        row = query_df.iloc[i]
 
-        dif = ppm(query_df.iloc[i]["precursor"], precursor_thresh)
+        seen_+=1
+        cores_set.add(row['inchi_base'])
+
+        dif = ppm(row["precursor"], precursor_thresh)
             
         #get precursor boundaries and their corresponding indices
-        upper = query_df.iloc[i]["precursor"] + dif
-        lower = query_df.iloc[i]["precursor"] - dif
+        upper = row["precursor"] + dif
+        lower = row["precursor"] - dif
 
         #search against pos precursors if pos mode
-        if query_df.iloc[i]['mode']=='+':
+        if row['mode']=='+':
             lower_ind = bisect.bisect_right(precursors_pos, lower)
             upper_ind = bisect.bisect_left(precursors_pos,upper)
             within_range = target_pos.iloc[lower_ind:upper_ind]
@@ -247,9 +245,6 @@ def create_matches_df_chunk(query_df,
             lower_ind = bisect.bisect_right(precursors_neg, lower)
             upper_ind = bisect.bisect_left(precursors_neg,upper)
             within_range = target_neg.iloc[lower_ind:upper_ind]
-
-        if adduct_match:
-            within_range = within_range[within_range['precursor_type'] == query_df.iloc[i]["precursor_type"]]
 
         #always exclude self match
         within_range = within_range[within_range['queryID'] != query_df.iloc[i]["queryID"]]
@@ -263,42 +258,24 @@ def create_matches_df_chunk(query_df,
         seen_chunk += within_range.shape[0]
 
         #add new columns and rename old, flush to csv
-        within_range['precquery'] = [query_df.iloc[i]["precursor"] for x in range(len(within_range))]
-        within_range['query'] = [query_df.iloc[i]["spectrum"] for x in range(len(within_range))]
-        within_range["InchiCoreMatch"] = query_df.iloc[i]["inchi_base"] == within_range["inchi_base"]
-        within_range["InchiKeyMatch"] = query_df.iloc[i]["inchi"] == within_range["inchi"]
-        within_range['queryID'] = query_df.iloc[i]["queryID"]
-        within_range.rename(columns={"precursor": "prectarget", "inchi_base": "target_base", 'spectrum':'target'}, inplace=True)
-        within_range = within_range[['precquery','prectarget','query','target','queryID','target_base',"InchiCoreMatch","InchiKeyMatch"]]
+        queries = list()
+        targets = list()
+        for target in within_range['target']:
+
+            matched = match_spectrum(row['query'], 
+                                     target, 
+                                     ms2_da = self.ms2_da, 
+                                     ms2_ppm = self.ms2_ppm)
+            
+            queries.append(matched[:,1] / np.sum(matched[:,1]))
+            targets.append(matched[:,2] / np.sum(matched[:,2]))
+
+        within_range['query'] = queries 
+        within_range['target'] = targets
+
+        within_range["score"] = row[self.match_column] == within_range[self.match_column]
+        within_range['queryID'] = row["queryID"]
         pieces.append(within_range)
-
-        num_trues_core += sum(within_range["InchiCoreMatch"])
-        num_trues_key += sum(within_range["InchiKeyMatch"])
-    
-        if seen_chunk >= chunk_size or seen > max_len:
-
-            seen_chunk=0
-            chunk_df = pd.concat(pieces)
-            chunk_df.to_pickle(f'{outpath}/chunk_{chunk_counter}.pkl')
-            chunk_counter+=1
-            pieces = list()
-
-            if chunk_counter % 10 == 0:
-                with open(logpath,'a') as handle:
-                    handle.write(f'finished {chunk_counter} chunks of size {chunk_size}\n')
-
-            if seen > max_len:  
-                with open(logpath,'a') as handle:
-
-                    handle.write(f'matched prec thresh: {precursor_thresh}, max len:{max_len} adduct match: {adduct_match} in {time.perf_counter()-start}\n')
-                    handle.write(f'total number of query spectra considered: {seen_}\n')
-                    handle.write(f'total number of target spectra considered: {seen}\n')
-                    handle.write(f'total inchicores seen: {len(cores_set)}\n')
-                    handle.write(f'{unmatched} queries went unmatched\n')
-                    handle.write(f'num true matches core: {num_trues_core} \n')
-                    handle.write(f'num true matches key: {num_trues_key} \n')
-                    
-                return
 
     with open(logpath,'a') as handle:
 
@@ -360,177 +337,109 @@ def create_matches_and_model_data(query,
                                     prec_remove_names = prec_remove_names
         )
 
+@dataclass
+class trainSetBuilder:
+    
+    query_input_path: str
+    target_input_path: str
+    dataset_names: list
+    dataset_max_sizes: list
+    identity_column: str
+    outputs_dir: str
+    ppm_match_window: int
 
-def create_model_dataset_chunk(
-    input_path,
-    output_path,
-    logpath,
-    sim_methods=None,
-    noise_threshes=[0.01],
-    noise_names = ['1%'],
-    centroid_tolerance_vals=[0.05],
-    centroid_tolerance_types=["da"],
-    reweight_methods=[None],
-    reweight_names = ['none'],
-    prec_removes=[None],
-    prec_remove_names = ['none'],
-):
-    """ """
-
-    start = time.perf_counter()
-    # create helper vars
-    spec_columns = [
-        "ent_query",
-        "npeaks_query",
-        "normalent_query",
-        "ent_target",
-        "npeaks_target",
-        "normalent_target",
-    ]
-
-    for chunk in os.listdir(input_path):
-
-        if chunk[-3:] != 'pkl':
-            continue
-
-        matches_df = pd.read_pickle(f'{input_path}/{chunk}')
-        pieces=list()
-        pieces.append(matches_df.iloc[:,:2])
-       
-        # create initial value spec columns
-        init_spec_df = matches_df.apply(
-            lambda x: get_spec_features(
-                x["query"], x["target"]
-            ),
-            axis=1,
-            result_type="expand",
-        )
-
-        init_spec_df.columns = spec_columns
-        pieces.append(init_spec_df)
+    def make_directory_structure(self):
         
-        ticker = 0
-        for remove in range(len(prec_removes)):
-            for i in range(len(noise_threshes)):
-                for j in range(len(reweight_methods)):
-                    for k in range(len(centroid_tolerance_vals)):
+        try:
+            os.mkdir(self.outputs_dir, exist_ok = True)
+            os.mkdir(f'{self.outputs_dir}/raw', exist_ok = True)
+            os.mkdir(f'{self.outputs_dir}/raw/query', exist_ok = True)
+            os.mkdir(f'{self.outputs_dir}/raw/target', exist_ok = True)
+            os.mkdir(f'{self.outputs_dir}/matched', exist_ok = True)
 
-                        spec_columns_ = [
-                            f"{x}_n:{noise_names[i]} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
-                            for x in spec_columns
-                        ]
+            for name in self.dataset_names:
+                os.mkdir(f'{self.outputs_dir}/matched/{name}', exist_ok = True)
 
+        except Exception as e:
+            self.log.error(f'unable to create directory structure: {e}')
+            raise e
+        
+    def create_match_datasets(self):
 
-                        sim_columns_ = [
-                            f"{x}_n:{noise_names[i]} c:{centroid_tolerance_vals[k]}{centroid_tolerance_types[k]} p:{reweight_names[j]}, pr:{prec_remove_names[remove]}"
-                            for x in sim_methods
-                        ]
+        for dataset in os.listdir(f'{self.outputs_dir}/raw/query'):
+         
+            query = pd.read_pickle(f'{self.outputs_dir}/raw/query/{dataset}')
+            target = pd.read_pickle(f'{self.outputs_dir}/raw/target/{dataset}')
 
-                        # clean specs and get corresponding spec features
-                        cleaned_df = matches_df.apply(
-                            lambda x: clean_and_spec_features(
-                                x["query"],
-                                x["precquery"],
-                                x["target"],
-                                x["prectarget"],
-                                noise_thresh=noise_threshes[i],
-                                centroid_thresh=centroid_tolerance_vals[k],
-                                centroid_type=centroid_tolerance_types[k],
-                                reweight_method= reweight_methods[j],
-                                prec_remove=prec_removes[remove],
-                            ),
-                            axis=1,
-                            result_type="expand",
-                        )
+            create_matches_df_chunk(query, 
+                                    target,
+                                    self.ppm_match_window,
+                                    self.dataset_max_sizes[self.dataset_names.index(dataset)],
+                                    None,
+                                    f'{self.outputs_dir}/matched',
+                                    f'loggy.log')
 
+    def break_datasets(self):
 
-                        cleaned_df.columns = (
-                            spec_columns_  + ["query", "target"]
-                        )
+        query = pd.read_pickle(self.query_input_path)
 
+        query_identities = list(set(query[self.identity_column]))
 
-                        pieces.append(cleaned_df.iloc[:,:-2])
-                        
-                        # create columns of similarity scores
-                        if centroid_tolerance_types[k] == "ppm":
-                            sim_df = cleaned_df.apply(
-                                lambda x: get_sim_features(
-                                    x["query"],
-                                    x["target"],
-                                    sim_methods,
-                                    ms2_ppm = centroid_tolerance_vals[k]
-                                ),
-                                axis=1,
-                                result_type="expand",
-                            )
+        self.log.info(f'query length: {query.shape[0]}')
+        self.log.info(f'query unique identities: {len(query_identities)}')
 
-                        else:
-                            
-                            sim_df = cleaned_df.apply(
-                                lambda x: get_sim_features(
-                                    x["query"],
-                                    x["target"],
-                                    sim_methods,
-                                    ms2_da = centroid_tolerance_vals[k]
-                                ),
-                                axis=1,
-                                result_type="expand",
-                            )
-                            
-                        sim_df.columns = sim_columns_
-                        pieces.append(sim_df)
+        target = pd.read_pickle(self.target_input_path)
 
-                        ticker += 1
-                        if ticker % 10 == 0:
-                            with open(logpath,'w') as handle:
+        target_identities = list(set(target[self.identity_column]))
 
-                                handle.write(f"added {ticker} settings in {round(time.perf_counter() - start,2)}\n")
-                                start = time.perf_counter()
+        self.log.info(f'target length: {query.shape[0]}')
+        self.log.info(f'target unique identities: {len(query_identities)}')
 
-        out_df = pd.concat(pieces, axis=1)
-        out_df["InchiCoreMatch"] = matches_df["InchiCoreMatch"]
-        out_df["InchiKeyMatch"] = matches_df["InchiKeyMatch"]
-        out_df.to_pickle(f'{output_path}/{chunk}')
+        self.log.info(f'query length: {query.shape[0]}')
+        self.log.info(f'query unique identities: {len(target_identities)}')
+
+        all_identities = list(query_identities.union(target_identities))
+        self.log.info(f'total unique identities: {len(target_identities)}')
+
+        self.create_and_write_sub_dfs(all_identities,
+                                      'target',
+                                      target)
+        
+        self.log.info('wrote all sub dfs for target')
+
+        self.create_and_write_sub_dfs(all_identities,
+                                      'query',
+                                      pd.read_pickle(self.query_input_path))
+        
+        self.log.info('wrote all sub dfs for target')
+
+        self.create_match_datasets()
 
 
-def generate_keep_indices(noise_threshes,
-                         centroid_tolerance_vals, 
-                         reweight_methods, 
-                         spec_features, 
-                         sim_methods, 
-                         prec_removes =[True],
-                         any_=False, 
-                         inits=False):
+    def create_and_write_sub_dfs(self, all_identities, name, df):
 
-    if inits:
-        keep_indices= list(range(8))
-    else:
-        keep_indices=list()
+        #build the different sets of identities
+        identity_sets = list()
+        assigned_inds = list()
+        for i in range(len(self.dataset_names)):
 
-    ind = 8
-    for _ in prec_removes:
-        for i in noise_threshes:
-            for k in reweight_methods:
-                for j in centroid_tolerance_vals:
-                  
-                    for l in spec_features:
-                        if any_:
-                            if True in [i,j,k,l,_]:
-                                keep_indices.append(ind)
-                        else:
-                            if i==j==k==l==_==True:
-                                keep_indices.append(ind)
-                        ind+=1
+            identity_sets.append(set(all_identities[int(i * len(all_identities) / len(self.dataset_names)): 
+                                       int((i + 1) *len(all_identities) / len(self.dataset_names))]))
+            
+            assigned_inds.append(list())
+            
+        identities = df.iloc[self.identity_column]
+        for i, identity in zip(list(range(len(identities))), identities):
 
-                    for l in sim_methods:
-                        
-                        if any_:
-                            if True in [i,j,k,l,_]:
-                                keep_indices.append(ind)
-                        else:
-                            if i==j==k==l==_==True:
-                                keep_indices.append(ind)
-                        ind+=1
+            for j in range(len(identity_sets)):
 
-    return keep_indices
+                if identity in identity_sets[j]:
 
+                    assigned_inds[j].append(i)
+                    break
+
+        for i in range(len(assigned_inds)):
+
+            sub = df.iloc[assigned_inds[i]]
+            sub.to_pickle(f'{self.outputs_dir}/{name}/{self.dataset_names[i]}.pkl')
+        
