@@ -104,16 +104,6 @@ class TunaSim:
                             new_val = self.grads1[key] * chain_component
                             self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
 
-                    #change gradients
-                    # for key, val in self.grads1.items():
-
-                    #     if 'query' in key:
-                    #         aggregated = query_components
-                    #     else:
-                    #         aggregated = target_components
-
-                    #     new_val = val * (aggregated / getattr(self, '_'.join(key.split('_')[:-1]) + '_weights'))
-                    #     self.grads1[key] = np.nan_to_num(new_val, nan=0.0, posinf=0.0, neginf=0.0)
 
         else:
             query_components = query_components[0]
@@ -174,7 +164,6 @@ class TunaSim:
         look at which parameters are set to determine which calculations are necessary
         '''
         
-        
         #set initial state to False, if some input is non-zero, then flip it to True
         #begin under the assumption that we will do no reweighting
         self.weight_triggers_activated = 0
@@ -204,15 +193,6 @@ class TunaSim:
                         self.unweighted = False
                         self.weight_triggers_activated +=1
 
-    def predict_for_dataset(self, dataset):
-
-        return dataset.apply(lambda x: self.predict(x['query'], 
-                                            x['target'],
-                                            x['precquery'], 
-                                            x['prectarget'], 
-                                            grads = False),
-                                            axis=1,
-                                            result_type="expand")
     
     def set_reweighted_intensity(self, query, target, prec_query, prec_target, grads = True):
         ''' 
@@ -616,17 +596,6 @@ class speedyTuna(TunaSim):
         predict also sets the values of potentially relevant gradint calculation parameters,
         and is therefore analagous to forward pass before backprop
         '''
-
-        #match peaks...will ensure same number for both specs
-        #same number is easier for grad but could be worth changing in future
-        matched = tools_fast.match_spectrum(query,
-                                            target,
-                                            ms2_da = self.ms2_da,
-                                            ms2_ppm = self.ms2_ppm)
-        
-        #only need intensities
-        query = matched[:,1] / np.sum(matched[:,1])
-        target = matched[:,2] / np.sum(matched[:,2])
         
         #set reweighted query and target and update reweight param gradients
         #intensities only from here on out
@@ -749,7 +718,7 @@ class speedyTuna(TunaSim):
 
  
 @dataclass
-class ScoreByQuery(TunaSim):
+class tunaQuery(TunaSim):
 
     ''' 
     reweights a set of core matches for a given query based on the scores of other potential matches

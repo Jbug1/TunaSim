@@ -187,25 +187,6 @@ class funcTrainer:
 
             return self.ones_dict[np.random.randint(self.num_1)]
 
-    def get_match_grad(self, sub_df):
-
-        #in the first round, we want to pick the index with the highest similarity scores
-        if sub_df.shape[0] > 1:
-
-            sims = sub_df.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
-                    axis = 1, 
-                    result_type = 'expand')
-        
-        
-            #then, update gradients based on the best match for this grouping column value
-            best_match_index = np.argmax(sims)
-
-        else:
-            best_match_index = 0
-
-        return sub_df.iloc[best_match_index]['score'], self.sim_func.predict(sub_df.iloc[best_match_index]['query'], 
-                                                                          sub_df.iloc[best_match_index]['target'],
-                                                                          grads = True)
 
     def stoch_descent(self, train_data, verbose = None):
         """ 
@@ -350,7 +331,28 @@ class scoreByQueryTrainer(funcTrainer):
             ad_int = ad_int,
             ad_slope = ad_slope,
             scale_holdover_vals = scale_holdover_vals,
-            groupby_column = groupby_column)  
+            groupby_column = groupby_column) 
+        
+
+    def get_match_grad(self, sub_df):
+
+        #in the first round, we want to pick the index with the highest similarity scores
+        if sub_df.shape[0] > 1:
+
+            sims = sub_df.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
+                    axis = 1, 
+                    result_type = 'expand')
+        
+        
+            #then, update gradients based on the best match for this grouping column value
+            best_match_index = np.argmax(sims)
+
+        else:
+            best_match_index = 0
+
+        return sub_df.iloc[best_match_index]['score'], self.sim_func.predict(sub_df.iloc[best_match_index]['query'], 
+                                                                          sub_df.iloc[best_match_index]['target'],
+                                                                          grads = True) 
         
 
     def loss_grad(self, pred_value, score):
