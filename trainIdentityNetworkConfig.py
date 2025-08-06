@@ -1,19 +1,23 @@
 #config file to pass all parameters onto script
-from funcTrainer import specSimTrainer, reweightTrainer
+from funcTrainer import specSimTrainer
+from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 
 #logging
-log_path = str()
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs/ten_sim'
 
 #datasetBuilder params
 build_datasets = True
-dataset_names = list()
-dataset_sizes = list()
-query_path = str()
-target_path = str()
-ppm_window = int()
-identity_column = str()
-output_directory = str()
+dataset_names = ['train', 'val_1', 'val_2', 'test']
+#dataset_max_sizes = [5e6, 5e6, 10, 10]
+dataset_max_sizes = [1e7, 5e6, 5e6, 10e6]
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
+ppm_match_window = 10
+identity_column = 'inchi_base'
+match_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
+ms2_da = 0.05
+ms2_ppm = None
 
 #first tunasim parameterization funcs
 bounds = {'add_norm_b': (0, 2),
@@ -47,29 +51,48 @@ init_vals = {
     'query_intensity_b': 0.1,
     }
 
-n_tunasims_final = 5
-tunasims_n_iter = 2e6
-residual_downsample_percentile = 50
-balance_column_tuna = 'score'
-groupby_column_tuna = ['queryID', 'target_base']
+n_tunasims_final = 10
+tunasims_n_iter = 3e5
+residual_downsampling_percentile = 50
+tunaSim_balance_column = 'score'
+tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001
+intermediate_outputs_path = f'{match_directory}/intermediate_ouputs'
 
-func_obs = list()
+tunaSim_trainers = list()
 for i in range(n_tunasims_final):
     
-    func_obs.append(specSimTrainer(f'tuna_{i}',
+    tunaSim_trainers.append(specSimTrainer(f'tuna_{i}',
                                 init_vals = init_vals,
                                 bounds = bounds,
                                 max_iter = tunasims_n_iter,
                                 learning_rates = learning_rate,
-                                balance_column= balance_column_tuna,
-                                groupby_column = groupby_column_tuna))
+                                balance_column = tunaSim_balance_column,
+                                groupby_column = tunaSim_groupby_column))
 
 ########################################################################
-#tuna consolidation layer params
-consolidation_models = list()
+#tuna aggreagtion layer params
+aggregator_selection_method = 'top'
+learning_rates = [1, 2, 10]
+max_leaf_nodes = [31, 40, 80, None]
+min_samples_leaf = [20,40,80]
+max_iter = [200, 400]
+l2_regs = [0, 1, 10]
 
-selection_method = 'top'
+#we will start with default model here to evaluate pickup from hyperparam tuning
+tunaSim_aggregation_candidates = [gbc()]
+
+for i in learning_rates:
+    for j in max_iter:
+        for k in max_leaf_nodes:
+            for l in min_samples_leaf:
+                for m in l2_regs:
+
+                    tunaSim_aggregation_candidates.append(gbc(learning_rate = i,
+                                                             max_iter = j,
+                                                             max_leaf_nodes = k,
+                                                             min_samples_leaf = l,
+                                                             l2_regularization = m))
 
 ########################################################################
 #reweight layer params
@@ -79,29 +102,32 @@ init_vals = {
     'dif_a': 0.001,
     'dif_b':1,
     'add_norm_b' : 1,
+    'add_norm_int': 0,
     'target_intensity_a': 0.1,
     'query_intensity_a': 0.1,
     'target_intensity_b': 0.1,
     'query_intensity_b': 0.1,
     }
 
-n_tunasims_final = 5
-tunasims_n_iter = 2e6
-residual_downsample_percentile = 50
-balance_column_tuna = 'score'
-groupby_column_tuna = ['queryID', 'target_base']
-learning_rate = 0.001
+# n_tunasims_final = 5
+# tunasims_n_iter = 2e6
+# residual_downsample_percentile = 50
+# balance_column_tuna = 'score'
+# groupby_column_tuna = ['queryID', 'target_base']
+# learning_rate = 0.001
 
-func_obs = list()
-for i in range(n_tunasims_final):
+scoreByQuery_trainers = list()
+scoreByGroup_aggregation_candidates = list()
+# func_obs = list()
+# for i in range(n_tunasims_final):
     
-    func_obs.append(reweightTrainer(f'tuna_{i}',
-                                init_vals = init_vals,
-                                bounds = bounds,
-                                max_iter = tunasims_n_iter,
-                                learning_rates = learning_rate,
-                                balance_column= balance_column_tuna,
-                                groupby_column = groupby_column_tuna))
+#     func_obs.append(reweightTrainer(f'tuna_{i}',
+#                                 init_vals = init_vals,
+#                                 bounds = bounds,
+#                                 max_iter = tunasims_n_iter,
+#                                 learning_rates = learning_rate,
+#                                 balance_column= balance_column_tuna,
+#                                 groupby_column = groupby_column_tuna))
 
     
 

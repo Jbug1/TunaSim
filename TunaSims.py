@@ -6,17 +6,8 @@ from dataclasses import dataclass
 import warnings
 warnings.filterwarnings("ignore")
 
-@dataclass
-class TunaSim:
 
-    query = None
-    target = None
-    prec_query = None
-    prec_target = None
-    zero_clip: float = True
-    standardize: float = True
-    set_grad1: bool = True
-    set_grad2: bool = True
+class TunaSim:
 
     def smooth_reweight(self,
                           name,
@@ -708,13 +699,15 @@ class speedyTuna(TunaSim):
 
         return score
     
+    def predict_row(self, row):
+
+        return self.predict(row['query'], row['target'], grads = False)
+    
     def predict_for_dataset(self, dataset):
 
-        return dataset.apply(lambda x: self.predict(x['query'], 
-                                            x['target'],
-                                            grads = False),
-                                            axis=1,
-                                            result_type="expand")
+        return dataset.apply(self.predict_row,
+                            axis=1,
+                            result_type="expand")
 
  
 @dataclass

@@ -1,72 +1,76 @@
 #main script to run network training
-import configparser
-import pandas as pd
-import logging
+from logging import getLogger, basicConfig
+from importlib.util import spec_from_file_location, module_from_spec
 from datasetBuilder import trainSetBuilder
 from networks import IdentityMatchNetwork
 from sys import argv
 import shutil
-
+from os import makedirs
+from pickle import dump
 
 def main(config_path):
 
-    config = configparser.ConfigParser()
-    config.read(config_path)
+    module_spec = spec_from_file_location('config', config_path)
+    config = module_from_spec(module_spec)
+    module_spec.loader.exec_module(config)
 
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    makedirs(config.log_path, exist_ok = True)
+    basicConfig(filename = f'{config.log_path}/training_log.log', 
+                level = "INFO", format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    fh = logging.FileHandler(f'{config.log_path}/train_log.log')
-    fh.setLevel(logging.DEBUG)
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.ERROR)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',  datefmt='%Y-%m-%d %H:%M:%S')
-    
-    ch.setFormatter(formatter)
-    fh.setFormatter(formatter)
-
-    logger.addHandler(ch)
-    logger.addHandler(fh)
+    logger = getLogger(__name__)
 
     #copy config file to log folder
     shutil.copy(config_path, f'{config.log_path}/config.py')
 
-    if config.create_datasets:
+    logger.info(f'instantiated log and copied config')
+
+    if config.build_datasets:
 
         trainSetBuilder_ = trainSetBuilder(query_input_path = config.query_input_path,
                                         target_input_path = config.target_input_path,
                                         dataset_max_sizes = config.dataset_max_sizes,
                                         dataset_names = config.dataset_names,
                                         identity_column = config.identity_column,
-                                        outputs_directory = config.raw_match_directory
+                                        outputs_directory = config.match_directory,
+                                        ppm_match_window = config.ppm_match_window,
+                                        ms2_da = config.ms2_da,
+                                        ms2_ppm = config.ms2_ppm
                                         )
+        
+        trainSetBuilder_.make_directory_structure()
         
         trainSetBuilder_.break_datasets()
 
-    logger.info('finished dataset creation')
+        logger.info('finished dataset creation')
 
     #fit network
-    network = IdentityMatchNetwork(train_path = f'{config.raw_match_directory}/train.pkl',
-                                   val_1_path = f'{config.raw_match_directory}/val_1pkl',
-                                   val_2_path = f'{config.raw_match_directory}/val_2.pkl',
-                                   test_path = f'{config.raw_match_directory}/test.pkl',
+    network = IdentityMatchNetwork(train_path = f'{config.match_directory}/matched/train.pkl',
+                                   val_1_path = f'{config.match_directory}/matched/val_1.pkl',
+                                   val_2_path = f'{config.match_directory}/matched/val_2.pkl',
+                                   test_path = f'{config.match_directory}/matched/test.pkl',
+                                   tunaSim_trainers = config.tunaSim_trainers,
+                                   scoreByGroup_trainers = config.scoreByQuery_trainers,
                                    intermediate_outputs_path = config.intermediate_outputs_path,
-                                   score_column = config.score_column,
-                                   tunasim_groupby_column = config.tunaSim_groupby_column,
-                                   reweight_groupby_column = config.reweight_groupby_column,
-                                   tunaSim_consolidation_candidates = config.tunaSim_consolidation_candidates,
-                                   score_by_group_funcObs = config.scoreByQuery_funcObs,
-                                   output_layer_candidates = config.output_layer_candidates,
-                                   residual_downsample_percentile = config.residual_downsample_percentile)
+                                   tunaSim_aggregation_candidates = config.tunaSim_aggregation_candidates,
+                                   scoreByGroup_aggregation_candidates = config.scoreByGroup_aggregation_candidates,
+                                   residual_downsampling_percentile = config.residual_downsampling_percentile,
+                                   aggregator_selection_method = config.aggregator_selection_method)
     
-    network.fit()
+    try:
+        network.fit()
+    except Exception as e:
+        logger.error(f'fitting failed: {e}')
 
+    finally:
+
+        with open(f'{config.intermediate_outputs_path}/pickled_objects/network.pkl', 'wb') as handle:
+
+            dump(network, handle)
 
 if __name__ == '__main__':
 
-    main(argv[2])
+    main(argv[1])
     
 
     

@@ -3,11 +3,10 @@
 import pandas as pd
 from tools_fast import match_spectrum
 import numpy as np
-import scipy
-import copy
+import os
 import time
 import bisect
-import os
+from pathlib import Path
 from dataclasses import dataclass
 from logging import getLogger
 
@@ -18,69 +17,89 @@ def ppm(base, ppm):
 
     return base * (ppm / 1e6)
 
-
 @dataclass
 class trainSetBuilder:
+
+    def __init__(self,
+                 query_input_path: str,
+                 target_input_path: str,
+                 dataset_names: list,
+                 identity_column: str,
+                 dataset_max_sizes: list,
+                 outputs_directory: str,
+                 ppm_match_window: int,
+                 self_search: bool = False,
+                 ms2_da: float = None,
+                 ms2_ppm: float = None):
     
-    query_input_path: str
-    target_input_path: str
-    dataset_names: list
-    dataset_max_sizes: list
-    identity_column: str
-    outputs_dir: str
-    ppm_match_window: int
+        self.query_input_path = query_input_path
+        self.target_input_path = target_input_path
+        self.dataset_names = dataset_names
+        self.identity_column = identity_column
+        self.dataset_max_sizes = dataset_max_sizes
+        self.outputs_directory = outputs_directory
+        self.ppm_match_window = ppm_match_window
+        self.self_search = self_search
+        self.ms2_da = ms2_da
+        self.ms2_ppm = ms2_ppm
 
-    log = getLogger(__name__)
+        if self.query_input_path == self.target_input_path:
+            self.self_search = True
 
+        self.log = getLogger(__name__)
+    
     def make_directory_structure(self):
         
         try:
-            os.mkdir(self.outputs_dir, exist_ok = True)
-            os.mkdir(f'{self.outputs_dir}/raw', exist_ok = True)
-            os.mkdir(f'{self.outputs_dir}/raw/query', exist_ok = True)
-            os.mkdir(f'{self.outputs_dir}/raw/target', exist_ok = True)
-            os.mkdir(f'{self.outputs_dir}/matched', exist_ok = True)
+            os.makedirs(self.outputs_directory, exist_ok = True)
+            os.makedirs(f'{self.outputs_directory}/raw', exist_ok = True)
+            os.makedirs(f'{self.outputs_directory}/raw/query', exist_ok = True)
+            os.makedirs(f'{self.outputs_directory}/raw/target', exist_ok = True)
+            os.makedirs(f'{self.outputs_directory}/matched', exist_ok = True)
 
-            for name in self.dataset_names:
-                os.mkdir(f'{self.outputs_dir}/matched/{name}', exist_ok = True)
+            # for name in self.dataset_names:
+            #     os.makedirs(f'{self.outputs_directory}/matched/{name}', exist_ok = True)
 
         except Exception as e:
             self.log.error(f'unable to create directory structure: {e}')
-            raise e
+            raise 
         
     def create_match_datasets(self):
 
-        for dataset in os.listdir(f'{self.outputs_dir}/raw/query'):
+        for dataset in [i.split('.')[0] for i in os.listdir(f'{self.outputs_directory}/raw/query')]:
          
-            query = pd.read_pickle(f'{self.outputs_dir}/raw/query/{dataset}')
-            target = pd.read_pickle(f'{self.outputs_dir}/raw/target/{dataset}')
+            query = pd.read_pickle(f'{self.outputs_directory}/raw/query/{dataset}.pkl')
+            target = pd.read_pickle(f'{self.outputs_directory}/raw/target/{dataset}.pkl')
 
+            #shuffling query ensures good coverage of different identities if we are limiting dataset size
+            query = query.sample(frac = 1)
+            
             self.create_matches_df(query, 
                                     target,
-                                    self.ppm_match_window,
                                     self.dataset_max_sizes[self.dataset_names.index(dataset)],
-                                    None,
-                                    f'{self.outputs_dir}/matched',
-                                    f'loggy.log')
+                                    f'{self.outputs_directory}/matched/{dataset}.pkl')
 
     def break_datasets(self):
 
         query = pd.read_pickle(self.query_input_path)
 
-        query_identities = list(set(query[self.identity_column]))
+        query_identities = set(query[self.identity_column])
 
         self.log.info(f'query length: {query.shape[0]}')
         self.log.info(f'query unique identities: {len(query_identities)}')
 
         target = pd.read_pickle(self.target_input_path)
+        target = target[['precursor', 'mode', 'spectrum', self.identity_column]]
+        
+        if self.self_search:
+            target['queryID'] = list(range(target.shape[0]))
+        else:
+            target['queryID'] = [-1 for _ in range(target.shape[0])]
 
         target_identities = list(set(target[self.identity_column]))
 
         self.log.info(f'target length: {query.shape[0]}')
         self.log.info(f'target unique identities: {len(query_identities)}')
-
-        self.log.info(f'query length: {query.shape[0]}')
-        self.log.info(f'query unique identities: {len(target_identities)}')
 
         all_identities = list(query_identities.union(target_identities))
         self.log.info(f'total unique identities: {len(target_identities)}')
@@ -91,14 +110,18 @@ class trainSetBuilder:
         
         self.log.info('wrote all sub dfs for target')
 
+        query = pd.read_pickle(self.query_input_path)
+        query = query[['precursor', 'mode', 'spectrum', self.identity_column]]
+        query['queryID'] = list(range(query.shape[0]))
+        
         self.create_and_write_sub_dfs(all_identities,
                                       'query',
-                                      pd.read_pickle(self.query_input_path))
+                                      query
+                                      )
         
-        self.log.info('wrote all sub dfs for target')
+        self.log.info('wrote all sub dfs for query')
 
         self.create_match_datasets()
-
 
     def create_and_write_sub_dfs(self, all_identities, name, df):
 
@@ -112,7 +135,7 @@ class trainSetBuilder:
             
             assigned_inds.append(list())
             
-        identities = df.iloc[self.identity_column]
+        identities = df[self.identity_column].tolist()
         for i, identity in zip(list(range(len(identities))), identities):
 
             for j in range(len(identity_sets)):
@@ -125,14 +148,12 @@ class trainSetBuilder:
         for i in range(len(assigned_inds)):
 
             sub = df.iloc[assigned_inds[i]]
-            sub.to_pickle(f'{self.outputs_dir}/{name}/{self.dataset_names[i]}.pkl')
-
+            sub.to_pickle(f'{self.outputs_directory}/raw/{name}/{self.dataset_names[i]}.pkl')
 
     def create_matches_df(self,
                           query_df, 
                         target_df, 
-                        precursor_thresh, 
-                        max_len, 
+                        max_size,
                         outpath):
 
         """
@@ -153,32 +174,36 @@ class trainSetBuilder:
         #sort by precursor
         target_pos.sort_values(by='precursor', inplace=True)
         target_neg.sort_values(by='precursor', inplace=True)
-        del(target_df)
 
         seen = 0
         seen_ = 0
         unmatched = 0
         pieces = list()
-        identities_set = set()
+        query_identities_set = set()
 
         #precursors held here for first part of search
         precursors_pos = target_pos['precursor'].to_numpy()
         precursors_neg = target_neg['precursor'].to_numpy()
+
+        #retain only necessary columns
+        target_neg = target_neg[['queryID', 'spectrum', self.identity_column]]
+        target_pos = target_pos[['queryID', 'spectrum', self.identity_column]]
+
         for i in range(len(query_df)):
 
             row = query_df.iloc[i]
 
-            seen_+=1
-            identities_set.add(row[self.identity_column])
+            seen_ += 1
+            query_identities_set.add(row[self.identity_column])
 
-            dif = ppm(row["precursor"], precursor_thresh)
+            dif = ppm(row["precursor"], self.ppm_match_window)
                 
             #get precursor boundaries and their corresponding indices
             upper = row["precursor"] + dif
             lower = row["precursor"] - dif
 
             #search against pos precursors if pos mode
-            if row['mode']=='+':
+            if row['mode'] == '+':
                 lower_ind = bisect.bisect_right(precursors_pos, lower)
                 upper_ind = bisect.bisect_left(precursors_pos,upper)
                 within_range = target_pos.iloc[lower_ind:upper_ind]
@@ -201,9 +226,9 @@ class trainSetBuilder:
             #add new columns and rename old, flush to csv
             queries = list()
             targets = list()
-            for target in within_range['target']:
+            for target in within_range['spectrum']:
 
-                matched = match_spectrum(row['query'], 
+                matched = match_spectrum(row['spectrum'],
                                         target, 
                                         ms2_da = self.ms2_da, 
                                         ms2_ppm = self.ms2_ppm)
@@ -214,18 +239,22 @@ class trainSetBuilder:
             within_range['query'] = queries 
             within_range['target'] = targets
 
-            within_range["score"] = row[self.match_column] == within_range[self.match_column]
+            within_range["score"] = row[self.identity_column] == within_range[self.identity_column]
             within_range['queryID'] = row["queryID"]
-            pieces.append(within_range)
 
-            chunk_df = pd.concat(pieces)
-            chunk_df.to_pickle(outpath)
-            
-            self.log.info(f'match info for {outpath}')
-            self.log.info(f'matched prec thresh: {precursor_thresh}, max len:{max_len} in {time.perf_counter()-start} ')
-            self.log.info(f'total number of query spectra considered: {seen_}')
-            self.log.info(f'total number of target spectra considered: {seen}')
-            self.log.info(f'total identities seen: {len(identities_set)}')
-            self.log.info(f'{unmatched} queries went unmatched for')
+            pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'score']])
+
+            if seen > max_size:
+                break
+
+        chunk_df = pd.concat(pieces)
+        chunk_df.to_pickle(outpath)
+        
+        self.log.info(f'match info for {outpath}')
+        self.log.info(f'time: {round((time.perf_counter() - start)/60, 4)} minutes to complete')
+        self.log.info(f'total number of query spectra considered: {seen_}')
+        self.log.info(f'total number of target spectra considered: {seen}')
+        self.log.info(f'total query identities seen: {len(query_identities_set)}')
+        self.log.info(f'{unmatched} queries went unmatched')
 
         return

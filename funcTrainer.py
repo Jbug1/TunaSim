@@ -3,14 +3,16 @@ import numpy as np
 from functools import partial
 from typing import Callable, List
 import copy
-from collections import Counter
 from collections import deque
+from logging import getLogger
 
+def square_loss_grad(x,y):
+    return 2 * (x - y)
 
 class funcTrainer:
     ''' 
     name: what to call this func ob 
-    sim_func: tuna sim function that maps input spectra to 0-1 interval
+    function: tuna sim function that maps input spectra to 0-1 interval
     init_vals: initial values for TUNABLE PARAMETERS only
     params: tunable parameters by name
     param_grad: first derivative of the loss function (y-y_hat)
@@ -29,7 +31,7 @@ class funcTrainer:
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = lambda x,y: 2 * (x - y),
+            loss_grad: Callable = square_loss_grad,
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
@@ -57,6 +59,8 @@ class funcTrainer:
 
         self.balance_flag = 0
 
+        self.log = getLogger(__name__)
+
         #set scheduling dictionaries
         self.accumulated_gradients = {key: 0 for key in self.init_vals}
         self.accumulated_scales = {key: 0 for key in self.init_vals}
@@ -82,10 +86,7 @@ class funcTrainer:
         
         self.init_vals = init_vals
         self.fixed_vals = fixed_vals
-        inits = dict()
-        inits.update(fixed_vals)
-        inits.update(init_vals)
-        self.sim_func = self.sim_func(**inits)
+        self.function = self.function(**init_vals)
         
         self.trained_values = copy.deepcopy(self.init_vals)
     
@@ -111,7 +112,8 @@ class funcTrainer:
             groups = list(range(len(data)))
 
         else:
-            groups = data[self.groupby_column].tolist()
+            #ensure that groupby with multiple columns is a hashable type
+            groups = [tuple(i) for i in data[self.groupby_column].to_numpy()]
 
         indices = list(range(len(data)))
     
@@ -173,6 +175,10 @@ class funcTrainer:
         if self.balance_column is None:
             self.ones_dict = self.zeros_dict
             self.num_1 = self.num_0
+
+        if self.num_1 == 0 or self.num_0 == 0:
+            self.log.error('No remaining instances of one balance class')
+            raise ValueError('No remaining instances of one balance class')
 
     def get_match_rows(self):
 
@@ -239,7 +245,7 @@ class funcTrainer:
         if np.isnan(loss_grad):
             raise ValueError("loss grad is nan")
         
-        for key, value, bounds in zip(self.sim_func.grad_names, self.sim_func.grad_vals, self.bounds):
+        for key, value, bounds in zip(self.function.grad_names, self.function.grad_vals, self.bounds):
 
             if key not in self.init_vals:
                 continue
@@ -252,10 +258,10 @@ class funcTrainer:
             learning_rate = self.calculate_learning_rate(key, step)
 
             step = learning_rate * step
-            updated = getattr(self.sim_func, key) - step
+            updated = getattr(self.function, key) - step
 
             #set updated value given constraints
-            setattr(self.sim_func, key, min(max(bounds[0], updated), bounds[1]))
+            setattr(self.function, key, min(max(bounds[0], updated), bounds[1]))
 
             if np.isnan(updated):
                 raise ValueError(f'updated value is Nan for {key, value}')
@@ -266,7 +272,7 @@ class specSimTrainer(funcTrainer):
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = lambda x,y: 2 * (x - y),
+            loss_grad: Callable = square_loss_grad,
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
@@ -278,7 +284,7 @@ class specSimTrainer(funcTrainer):
             groupby_column: str = None,
             balance_column: str = None):
         
-        self.sim_func = TunaSims.speedyTuna
+        self.function = TunaSims.speedyTuna
         
         super().__init__(
             name = name,
@@ -297,7 +303,27 @@ class specSimTrainer(funcTrainer):
             balance_column = balance_column
         )
 
-        self.bounds = [self.bounds[key] for key in self.sim_func.grad_names]
+        self.bounds = [self.bounds[key] for key in self.function.grad_names]
+
+    def get_match_grad(self, sub_df):
+
+        #in the first round, we want to pick the index with the highest similarity scores
+        if sub_df.shape[0] > 1:
+
+            sims = sub_df.apply(self.function.predict_row, 
+                                axis = 1, 
+                                result_type = 'expand')
+        
+        
+            #then, update gradients based on the best match for this grouping column value
+            best_match_index = np.argmax(sims)
+
+        else:
+            best_match_index = 0
+
+        return sub_df.iloc[best_match_index]['score'], self.function.predict(sub_df.iloc[best_match_index]['query'], 
+                                                                          sub_df.iloc[best_match_index]['target'],
+                                                                          grads = True) 
         
 
 class scoreByQueryTrainer(funcTrainer):
@@ -318,7 +344,7 @@ class scoreByQueryTrainer(funcTrainer):
             groupby_column: str = None,
     ):
         
-        self.sim_func = TunaSims.ScoreByQuery
+        self.function = TunaSims.ScoreByQuery
 
         super().__init__(name = name,
             init_vals = init_vals,
@@ -333,26 +359,6 @@ class scoreByQueryTrainer(funcTrainer):
             scale_holdover_vals = scale_holdover_vals,
             groupby_column = groupby_column) 
         
-
-    def get_match_grad(self, sub_df):
-
-        #in the first round, we want to pick the index with the highest similarity scores
-        if sub_df.shape[0] > 1:
-
-            sims = sub_df.apply(lambda x: self.sim_func.predict(x['query'], x['target'], grads = False), 
-                    axis = 1, 
-                    result_type = 'expand')
-        
-        
-            #then, update gradients based on the best match for this grouping column value
-            best_match_index = np.argmax(sims)
-
-        else:
-            best_match_index = 0
-
-        return sub_df.iloc[best_match_index]['score'], self.sim_func.predict(sub_df.iloc[best_match_index]['query'], 
-                                                                          sub_df.iloc[best_match_index]['target'],
-                                                                          grads = True) 
         
 
     def loss_grad(self, pred_value, score):
