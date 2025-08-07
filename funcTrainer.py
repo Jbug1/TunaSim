@@ -3,6 +3,7 @@ import numpy as np
 from typing import Callable, List
 import copy
 from collections import deque
+from numba import njit
 from logging import getLogger
 
 
@@ -98,34 +99,49 @@ class funcTrainer:
 
         self.stoch_descent(train_data, verbose)
 
-
     def build_inds_dict(self, data):
+
+        self.num_0, self.num_1, self.zeros_dict, self.ones_dict = funcTrainer.build_inds_dict_sub(data,
+                                                                                              self.balance_column,
+                                                                                              self.groupby_column)
+
+
+        if self.num_1 == 0 or self.num_0 == 0:
+            self.log.error('No remaining instances of one balance class')
+            raise ValueError('No remaining instances of one balance class')
+        
+    @staticmethod
+    @njit
+    def build_inds_dict_sub(data, 
+                        balance_column,
+                        groupby_column,
+                        ):
         """ 
         if we are not balancing, we will always sample from the 0 dict
         """
 
-        if self.balance_column is None:
+        if balance_column is None:
             balances = np.zeros(len(data))
         else:
-            balances = data[self.balance_column].tolist()
+            balances = data[balance_column].tolist()
 
-        if self.groupby_column is None:
+        if groupby_column is None:
             groups = list(range(len(data)))
 
         else:
             #ensure that groupby with multiple columns is a hashable type
-            groups = [tuple(i) for i in data[self.groupby_column].to_numpy()]
+            groups = [tuple(i) for i in data[groupby_column].to_numpy()]
 
         indices = list(range(len(data)))
     
-        self.num_0 = 0
-        self.num_1 = 0
+        num_0 = 0
+        num_1 = 0
 
         key_to_ind_0 = dict()
         key_to_ind_1 = dict()
 
-        self.zeros_dict = dict()
-        self.ones_dict = dict()
+        zeros_dict = dict()
+        ones_dict = dict()
 
         for balance, group, index in zip(balances, groups, indices):
 
@@ -139,18 +155,18 @@ class funcTrainer:
                     num_key = key_to_ind_0[group]
 
                     #update the zeros dict with index
-                    self.zeros_dict[num_key].append(index)
+                    zeros_dict[num_key].append(index)
                 
                 else:
 
                     #add this key and unique value to the conversion dict
-                    key_to_ind_0[group] = self.num_0
+                    key_to_ind_0[group] = num_0
 
                     #add new key to zeros dict
-                    self.zeros_dict[self.num_0] = [index]
+                    zeros_dict[num_0] = [index]
 
                     #increment counter
-                    self.num_0 += 1
+                    num_0 += 1
 
             else:
 
@@ -160,26 +176,24 @@ class funcTrainer:
                     num_key = key_to_ind_1[group]
 
                     #update the zeros dict with index
-                    self.ones_dict[num_key].append(index)
+                    ones_dict[num_key].append(index)
                 
                 else:
 
                     #add this key and unique value to the conversion dict
-                    key_to_ind_1[group] = self.num_1
+                    key_to_ind_1[group] = num_1
 
                     #add new key to zeros dict
-                    self.ones_dict[self.num_1] = [index]
+                    ones_dict[num_1] = [index]
 
                     #increment counter
-                    self.num_1 += 1
+                    num_1 += 1
 
-        if self.balance_column is None:
-            self.ones_dict = self.zeros_dict
-            self.num_1 = self.num_0
+        if balance_column is None:
+            ones_dict = zeros_dict
+            num_1 = num_0
 
-        if self.num_1 == 0 or self.num_0 == 0:
-            self.log.error('No remaining instances of one balance class')
-            raise ValueError('No remaining instances of one balance class')
+        return num_0, num_1, zeros_dict, ones_dict
 
     def get_match_rows(self):
 
@@ -311,7 +325,7 @@ class specSimTrainer(funcTrainer):
         #in the first round, we want to pick the index with the highest similarity scores
         if sub_df.shape[0] > 1:
 
-            sims = function.predict_for_dataset(sub_df)
+            sims = self.function.predict_for_dataset(sub_df)
         
         
             #then, update gradients based on the best match for this grouping column value

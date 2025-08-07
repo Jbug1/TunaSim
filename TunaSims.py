@@ -1,6 +1,5 @@
 import numpy as np
 from numba import njit
-from numba.experimental import jitclass
 import tools_fast
 from dataclasses import dataclass
 from multiprocessing import Pool
@@ -96,6 +95,7 @@ class speedyTuna:
 
         return res
     
+    
     @staticmethod
     @njit
     def sub_predict_grads(query,
@@ -133,14 +133,18 @@ class speedyTuna:
 
         #update dif term
         dif_abs_term = dif_a * dif_abs_term
+        b_grad = dif_abs_term * np.log(difs_abs)
+        b_grad[np.isnan(b_grad)] = 0
 
-        grad_vals[1] = np.sum(np.nan_to_num(dif_abs_term * np.log(difs_abs), neginf = 0.0)) #dif_b
+        grad_vals[1] = np.sum(b_grad) #dif_b
             
         grad_vals[2] = np.sum(mult_term) #mult_a
 
         mult_term = mult_a * mult_term
+        b_grad = mult_term * np.log(mults)
+        b_grad[np.isnan(b_grad)] = 0
 
-        grad_vals[3] = np.sum(np.nan_to_num(mult_term * np.log(mults), neginf = 0.0)) #mult_b
+        grad_vals[3] = np.sum(b_grad) #mult_b
 
         #since all the add norm gradients build on each other, we can gain a speedup
         #chain rule, exponent rule

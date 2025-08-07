@@ -4,7 +4,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs/ten_sim_2'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs/ten_sim_speed'
 
 #datasetBuilder params
 build_datasets = False
@@ -15,7 +15,7 @@ query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 ppm_match_window = 10
 identity_column = 'inchi_base'
-match_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
+match_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_speed'
 ms2_da = 0.05
 ms2_ppm = None
 
