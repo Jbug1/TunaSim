@@ -4,10 +4,10 @@ from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs/ten_sim'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs/ten_sim_2'
 
 #datasetBuilder params
-build_datasets = True
+build_datasets = False
 dataset_names = ['train', 'val_1', 'val_2', 'test']
 #dataset_max_sizes = [5e6, 5e6, 10, 10]
 dataset_max_sizes = [1e7, 5e6, 5e6, 10e6]
@@ -73,11 +73,10 @@ for i in range(n_tunasims_final):
 ########################################################################
 #tuna aggreagtion layer params
 aggregator_selection_method = 'top'
-learning_rates = [1, 2, 10]
-max_leaf_nodes = [31, 40, 80, None]
-min_samples_leaf = [20,40,80]
-max_iter = [200, 400]
-l2_regs = [0, 1, 10]
+learning_rates = [0.05, 0.1, 0.25, 0.5]
+max_leaf_nodes = [20, 31, 40, 80]
+max_iter = [200, 800]
+l2_regs = [10, 20, 40, 80, 160]
 
 #we will start with default model here to evaluate pickup from hyperparam tuning
 tunaSim_aggregation_candidates = [gbc()]
@@ -85,14 +84,12 @@ tunaSim_aggregation_candidates = [gbc()]
 for i in learning_rates:
     for j in max_iter:
         for k in max_leaf_nodes:
-            for l in min_samples_leaf:
-                for m in l2_regs:
+            for l in l2_regs:
 
-                    tunaSim_aggregation_candidates.append(gbc(learning_rate = i,
-                                                             max_iter = j,
-                                                             max_leaf_nodes = k,
-                                                             min_samples_leaf = l,
-                                                             l2_regularization = m))
+                tunaSim_aggregation_candidates.append(gbc(learning_rate = i,
+                                                            max_iter = j,
+                                                            max_leaf_nodes = k,
+                                                            l2_regularization = l))
 
 ########################################################################
 #reweight layer params
@@ -102,7 +99,6 @@ init_vals = {
     'dif_a': 0.001,
     'dif_b':1,
     'add_norm_b' : 1,
-    'add_norm_int': 0,
     'target_intensity_a': 0.1,
     'query_intensity_a': 0.1,
     'target_intensity_b': 0.1,

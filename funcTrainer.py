@@ -1,13 +1,13 @@
 import TunaSims
 import numpy as np
-from functools import partial
 from typing import Callable, List
 import copy
 from collections import deque
 from logging import getLogger
 
-def square_loss_grad(x,y):
-    return 2 * (x - y)
+
+def square_loss_grad( x):
+    pass
 
 class funcTrainer:
     ''' 
@@ -31,7 +31,7 @@ class funcTrainer:
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = square_loss_grad,
+            loss_grad: Callable = None,
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
@@ -97,6 +97,7 @@ class funcTrainer:
         self.build_inds_dict(train_data)
 
         self.stoch_descent(train_data, verbose)
+
 
     def build_inds_dict(self, data):
         """ 
@@ -193,7 +194,6 @@ class funcTrainer:
 
             return self.ones_dict[np.random.randint(self.num_1)]
 
-
     def stoch_descent(self, train_data, verbose = None):
         """ 
         Implement gradient descent for model tuning
@@ -237,6 +237,7 @@ class funcTrainer:
             
             return max(1e-7, self.learning_rates[param])
     
+
     def step(self, score, pred_val):
 
         #convert gradient of f^ to gradient of loss func
@@ -246,9 +247,6 @@ class funcTrainer:
             raise ValueError("loss grad is nan")
         
         for key, value, bounds in zip(self.function.grad_names, self.function.grad_vals, self.bounds):
-
-            if key not in self.init_vals:
-                continue
 
             #chain rule to get gradient w.r.t loss func
             #use np.dot in order to accomodate vector and float vals
@@ -266,13 +264,13 @@ class funcTrainer:
             if np.isnan(updated):
                 raise ValueError(f'updated value is Nan for {key, value}')
 
+
 class specSimTrainer(funcTrainer):
 
     def __init__(self,
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = square_loss_grad,
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
@@ -290,7 +288,6 @@ class specSimTrainer(funcTrainer):
             name = name,
             init_vals = init_vals,
             fixed_vals = fixed_vals,
-            loss_grad = loss_grad,
             learning_rates = learning_rates,
             max_iter = max_iter,
             bounds = bounds,
@@ -305,14 +302,16 @@ class specSimTrainer(funcTrainer):
 
         self.bounds = [self.bounds[key] for key in self.function.grad_names]
 
+    def loss_grad(self, x, y):
+
+        return 2 * (x - y)
+
     def get_match_grad(self, sub_df):
 
         #in the first round, we want to pick the index with the highest similarity scores
         if sub_df.shape[0] > 1:
 
-            sims = sub_df.apply(self.function.predict_row, 
-                                axis = 1, 
-                                result_type = 'expand')
+            sims = function.predict_for_dataset(sub_df)
         
         
             #then, update gradients based on the best match for this grouping column value
@@ -323,8 +322,7 @@ class specSimTrainer(funcTrainer):
 
         return sub_df.iloc[best_match_index]['score'], self.function.predict(sub_df.iloc[best_match_index]['query'], 
                                                                           sub_df.iloc[best_match_index]['target'],
-                                                                          grads = True) 
-        
+                                                                          grads = True)       
 
 class scoreByQueryTrainer(funcTrainer):
 
@@ -342,9 +340,12 @@ class scoreByQueryTrainer(funcTrainer):
             ad_slope: float  = 0.3,
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
+            balance_column: str = None,
+            identity_column: str = None
     ):
         
-        self.function = TunaSims.ScoreByQuery
+        self.identity_column = identity_column
+        self.function = TunaSims.scoreByQuery2
 
         super().__init__(name = name,
             init_vals = init_vals,
@@ -357,10 +358,9 @@ class scoreByQueryTrainer(funcTrainer):
             ad_int = ad_int,
             ad_slope = ad_slope,
             scale_holdover_vals = scale_holdover_vals,
-            groupby_column = groupby_column) 
+            groupby_column = groupby_column,
+            balance_column = balance_column) 
         
-        
-
     def loss_grad(self, pred_value, score):
 
         label_ind = np.where(pred_value[1] == score)
@@ -369,3 +369,19 @@ class scoreByQueryTrainer(funcTrainer):
         output[label_ind] = 1 / pred_value[0][label_ind]
 
         return output
+
+    def get_match_grad(self, sub_df):
+        """ 
+        match the format of get match grad for similarities
+        """
+
+        if np.sum(sub_df['score']) == 1:
+
+            label = sub_df[sub_df['score'] == 1][self.identity_column]
+
+        else:
+
+            label = None
+
+        return label, self.function.predict(sub_df['preds'], sub_df[self.identity_column], grads = True)
+    
