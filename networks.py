@@ -54,7 +54,7 @@ class IdentityMatchNetwork:
         # overall_start = time.time()
 
         #fit initial tunasims
-        self.log.info('beginning initial tunasims')
+        self.log.info('beginning tunaSim training')
         self.fit_tunasims(pd.read_pickle(self.train_path))
 
         #create tunasim preds
@@ -193,7 +193,7 @@ class IdentityMatchNetwork:
             remaining_labels = list(set(dataset['score']))
             if  len(remaining_labels) == 1:
 
-                self.log.info(f'ran out of {not remaining_labels[0]} lables. Exiting tunasim fitting')
+                self.log.info(f'ran out of {not remaining_labels[0]} labels. Exiting tunasim fitting')
                 break
 
     def create_tunasim_preds(self, dataset):

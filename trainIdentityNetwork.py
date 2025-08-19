@@ -59,8 +59,10 @@ def main(config_path):
     
     try:
         network.fit()
+
     except Exception as e:
-        logger.error(f'fitting failed: {e}')
+        logger.error(f'error during network fitting: {e}')
+        raise
 
     finally:
 

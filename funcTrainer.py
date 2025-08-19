@@ -3,7 +3,7 @@ import numpy as np
 from typing import Callable, List
 import copy
 from collections import deque
-from numba import njit
+import time
 from logging import getLogger
 
 
@@ -32,7 +32,6 @@ class funcTrainer:
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            loss_grad: Callable = None,
             learning_rates: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
@@ -45,7 +44,6 @@ class funcTrainer:
             balance_column: str = None
     ):
         self.name = name
-        self.loss_grad = loss_grad
         self.init_vals = init_vals
         self.bounds = bounds
         self.max_iter = int(max_iter)
@@ -91,57 +89,47 @@ class funcTrainer:
         
         self.trained_values = copy.deepcopy(self.init_vals)
     
-    def fit(self, train_data, verbose=None):
+    def fit(self, train_data):
 
         train_data = train_data.sample(frac = 1)
 
+        start = time.time()
         self.build_inds_dict(train_data)
+        self.log.info(f'created inds dict in {round((time.time() - start) / 60,4)} minutes')
 
-        self.stoch_descent(train_data, verbose)
-
-    def build_inds_dict(self, data):
-
-        self.num_0, self.num_1, self.zeros_dict, self.ones_dict = funcTrainer.build_inds_dict_sub(data,
-                                                                                              self.balance_column,
-                                                                                              self.groupby_column)
-
-
-        if self.num_1 == 0 or self.num_0 == 0:
-            self.log.error('No remaining instances of one balance class')
-            raise ValueError('No remaining instances of one balance class')
+        start = time.time()
+        self.stoch_descent(train_data)
+        self.log.info(f'trained function in {round((time.time() - start) / 60,4)} minutes')
         
-    @staticmethod
-    @njit
-    def build_inds_dict_sub(data, 
-                        balance_column,
-                        groupby_column,
-                        ):
+
+    def build_inds_dict(self,
+                        data):
         """ 
         if we are not balancing, we will always sample from the 0 dict
         """
 
-        if balance_column is None:
+        if self.balance_column is None:
             balances = np.zeros(len(data))
         else:
-            balances = data[balance_column].tolist()
+            balances = data[self.balance_column].tolist()
 
-        if groupby_column is None:
+        if self.groupby_column is None:
             groups = list(range(len(data)))
 
         else:
             #ensure that groupby with multiple columns is a hashable type
-            groups = [tuple(i) for i in data[groupby_column].to_numpy()]
+            groups = [tuple(i) for i in data[self.groupby_column].to_numpy()]
 
         indices = list(range(len(data)))
     
-        num_0 = 0
-        num_1 = 0
+        self.num_0 = 0
+        self.num_1 = 0
 
-        key_to_ind_0 = dict()
-        key_to_ind_1 = dict()
+        self.key_to_ind_0 = dict()
+        self.key_to_ind_1 = dict()
 
-        zeros_dict = dict()
-        ones_dict = dict()
+        self.zeros_dict = dict()
+        self.ones_dict = dict()
 
         for balance, group, index in zip(balances, groups, indices):
 
@@ -149,51 +137,50 @@ class funcTrainer:
             #depending on whether we are balancing on some column or not
             if balance == 0:
 
-                if group in key_to_ind_0.keys():
+                if group in self.key_to_ind_0.keys():
                     
                     #retrieve key from the conversion dict
-                    num_key = key_to_ind_0[group]
+                    num_key = self.key_to_ind_0[group]
 
                     #update the zeros dict with index
-                    zeros_dict[num_key].append(index)
+                    self.zeros_dict[num_key].append(index)
                 
                 else:
 
                     #add this key and unique value to the conversion dict
-                    key_to_ind_0[group] = num_0
+                    self.key_to_ind_0[group] = self.num_0
 
                     #add new key to zeros dict
-                    zeros_dict[num_0] = [index]
+                    self.zeros_dict[self.num_0] = [index]
 
                     #increment counter
-                    num_0 += 1
+                    self.num_0 += 1
 
             else:
 
-                if group in key_to_ind_1.keys():
+                if group in self.key_to_ind_1.keys():
                     
                     #retrieve key from the conversion dict
-                    num_key = key_to_ind_1[group]
+                    num_key = self.key_to_ind_1[group]
 
                     #update the zeros dict with index
-                    ones_dict[num_key].append(index)
+                    self.ones_dict[num_key].append(index)
                 
                 else:
 
                     #add this key and unique value to the conversion dict
-                    key_to_ind_1[group] = num_1
+                    self.key_to_ind_1[group] = self.num_1
 
                     #add new key to zeros dict
-                    ones_dict[num_1] = [index]
+                    self.ones_dict[self.num_1] = [index]
 
                     #increment counter
-                    num_1 += 1
+                    self.num_1 += 1
 
-        if balance_column is None:
-            ones_dict = zeros_dict
-            num_1 = num_0
+        if self.balance_column is None:
+            self.ones_dict = self.zeros_dict
+            self.num_1 = self.num_0
 
-        return num_0, num_1, zeros_dict, ones_dict
 
     def get_match_rows(self):
 
@@ -208,7 +195,8 @@ class funcTrainer:
 
             return self.ones_dict[np.random.randint(self.num_1)]
 
-    def stoch_descent(self, train_data, verbose = None):
+
+    def stoch_descent(self, train_data):
         """ 
         Implement gradient descent for model tuning
         func must take: match, query, target
@@ -218,14 +206,13 @@ class funcTrainer:
 
             index = self.get_match_rows()
 
+            print(train_data.iloc[index])
+
             #select only what we are interested in grouping and retrieve grads
-            score, pred_val = self.get_match_grad(train_data.iloc[index])
+            label, pred_val = self.get_match_grad_components(train_data.iloc[index])
             
             #update with the score of choice and funcOb's loss function
-            self.step(score, pred_val)    
-
-            if (_ + 1) % (verbose or 1e12) == 0:
-                print(f'completed {_ + 1} iterations')
+            self.step(label, pred_val)    
 
             self.n_iter += 1
     
@@ -256,9 +243,6 @@ class funcTrainer:
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = self.loss_grad(pred_val, score)
-    
-        if np.isnan(loss_grad):
-            raise ValueError("loss grad is nan")
         
         for key, value, bounds in zip(self.function.grad_names, self.function.grad_vals, self.bounds):
 
@@ -279,7 +263,7 @@ class funcTrainer:
                 raise ValueError(f'updated value is Nan for {key, value}')
 
 
-class specSimTrainer(funcTrainer):
+class tunaSimTrainer(funcTrainer):
 
     def __init__(self,
             name: str,
@@ -296,7 +280,7 @@ class specSimTrainer(funcTrainer):
             groupby_column: str = None,
             balance_column: str = None):
         
-        self.function = TunaSims.speedyTuna
+        self.function = TunaSims.tunaSim
         
         super().__init__(
             name = name,
@@ -320,7 +304,7 @@ class specSimTrainer(funcTrainer):
 
         return 2 * (x - y)
 
-    def get_match_grad(self, sub_df):
+    def get_match_grad_components(self, sub_df):
 
         #in the first round, we want to pick the index with the highest similarity scores
         if sub_df.shape[0] > 1:
@@ -338,7 +322,7 @@ class specSimTrainer(funcTrainer):
                                                                           sub_df.iloc[best_match_index]['target'],
                                                                           grads = True)       
 
-class scoreByQueryTrainer(funcTrainer):
+class tunaQueryTrainer(funcTrainer):
 
     def __init__(
             self,
@@ -359,7 +343,7 @@ class scoreByQueryTrainer(funcTrainer):
     ):
         
         self.identity_column = identity_column
-        self.function = TunaSims.scoreByQuery2
+        self.function = TunaSims.tunaQuery
 
         super().__init__(name = name,
             init_vals = init_vals,
@@ -384,18 +368,22 @@ class scoreByQueryTrainer(funcTrainer):
 
         return output
 
-    def get_match_grad(self, sub_df):
+    def get_match_grad_components(self, sub_df):
         """ 
         match the format of get match grad for similarities
         """
 
-        if np.sum(sub_df['score']) == 1:
+        #retain the true identity label for this search
+        #'' if there is no match
+        label = '' 
+        for i in zip(sub_df['score'], sub_df[self.identity_column]):
 
-            label = sub_df[sub_df['score'] == 1][self.identity_column]
+            if i[0] == 1:
+                label = i[1]
+                break
 
-        else:
+        preds = np.array(sub_df['preds'], dtype = np.float64)
+        identities = np.array(sub_df[self.identity_column], dtype = np.str_)
 
-            label = None
-
-        return label, self.function.predict(sub_df['preds'], sub_df[self.identity_column], grads = True)
+        return label, self.function.predict(preds, identities, grads = True)
     

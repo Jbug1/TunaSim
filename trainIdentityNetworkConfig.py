@@ -1,5 +1,5 @@
 #config file to pass all parameters onto script
-from funcTrainer import specSimTrainer
+from funcTrainer import tunaSimTrainer, tunaQueryTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 
@@ -21,22 +21,16 @@ ms2_ppm = None
 
 #first tunasim parameterization funcs
 bounds = {'add_norm_b': (0, 2),
-          'mult_add_norm_b': (0, 2),
-          'dif_add_norm_b': (0, 2),
           'mult_b': (1e-10, 2),
           'add_norm_a': (1e-10, 3),
           'dif_b': (1e-10, 2),
           'dif_a':(-3,3),
           'mult_a': (-3,3),
           'add_norm_int': (0, 3),
-           'target_intensity_int': (-0.2,1),
-           'query_intensity_int': (-0.2,1),
           'target_intensity_a': (1e-10,2),
           'query_intensity_a': (1e-10,2),
           'target_intensity_b': (1e-10,2),
           'query_intensity_b': (1e-10,2),
-          'target_intensity_c': (1e-10,2),
-          'query_intensity_c': (1e-10,2)
           }
 
 init_vals = {
@@ -62,7 +56,7 @@ intermediate_outputs_path = f'{match_directory}/intermediate_ouputs'
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):
     
-    tunaSim_trainers.append(specSimTrainer(f'tuna_{i}',
+    tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i}',
                                 init_vals = init_vals,
                                 bounds = bounds,
                                 max_iter = tunasims_n_iter,
