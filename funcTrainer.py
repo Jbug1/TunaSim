@@ -1,14 +1,17 @@
 import TunaSims
 import numpy as np
-from typing import Callable, List
+from typing import List
 import copy
 from collections import deque
 import time
 from logging import getLogger
+from numba import njit
 
+@njit
+def square_loss_grad(x, y):
 
-def square_loss_grad( x):
-    pass
+        return 2 * (x - y)
+
 
 class funcTrainer:
     ''' 
@@ -41,13 +44,15 @@ class funcTrainer:
             ad_slope: float  = 0.3,
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
-            balance_column: str = None
+            balance_column: str = None,
+            fixed: set = set()
     ):
         self.name = name
         self.init_vals = init_vals
         self.bounds = bounds
         self.max_iter = int(max_iter)
         self.n_iter = 0
+        self.learning_rates = learning_rates
         self.learning_rate_scheduler = learning_rate_scheduler
         self.learning_beta = learning_beta
         self.ad_int = ad_int
@@ -55,33 +60,24 @@ class funcTrainer:
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
         self.balance_column = balance_column
+        self.fixed = fixed
 
         self.balance_flag = 0
 
         self.log = getLogger(__name__)
+
+        #self.bounds = [self.bounds[key] for key in self.function.grad_names]
 
         #set scheduling dictionaries
         self.accumulated_gradients = {key: 0 for key in self.init_vals}
         self.accumulated_scales = {key: 0 for key in self.init_vals}
         self.scale_holdovers = {key: deque([1 for i in range(self.scale_holdover_vals)]) for key in self.init_vals}
 
-
-        if type(learning_rates) == float or type(learning_rates) == int:
-            self.learning_rates = dict()
-            for key in self.init_vals:
-                self.learning_rates[key] = learning_rates
-
-        else:
-            self.learning_rates = learning_rates
-
         #we will start squared accumulated with large value for small steps
         self.squared_accumulated = {key: 1 for key in self.init_vals.keys()}
 
         #grad directions begins at zero, signifying a change in neither direction
         self.accumulated_directions = {key: 0 for key in self.init_vals.keys()}
-
-        if len(self.learning_rates) != len(self.init_vals):
-            raise ValueError('lambda and init vals len must match')
         
         self.init_vals = init_vals
         self.fixed_vals = fixed_vals
@@ -90,8 +86,6 @@ class funcTrainer:
         self.trained_values = copy.deepcopy(self.init_vals)
     
     def fit(self, train_data):
-
-        train_data = train_data.sample(frac = 1)
 
         start = time.time()
         self.build_inds_dict(train_data)
@@ -202,14 +196,23 @@ class funcTrainer:
         func must take: match, query, target
         """
 
+        self.unmatched = 0
+        self.top_wrong = 0
         for _ in range(int(self.max_iter)):
 
             index = self.get_match_rows()
 
-            print(train_data.iloc[index])
+            sub = train_data.iloc[index]
 
+            if sum(sub['score']) == 0:
+                print('unmatched', index, _)
+                self.unmatched += 1
+
+            elif sub[sub['score'] == True].iloc[0]['preds'] != max(sub['preds']):
+                self.top_wrong +=1
+                                                           
             #select only what we are interested in grouping and retrieve grads
-            label, pred_val = self.get_match_grad_components(train_data.iloc[index])
+            label, pred_val = self.get_match_grad_components(sub)
             
             #update with the score of choice and funcOb's loss function
             self.step(label, pred_val)    
@@ -242,25 +245,26 @@ class funcTrainer:
     def step(self, score, pred_val):
 
         #convert gradient of f^ to gradient of loss func
-        loss_grad = self.loss_grad(pred_val, score)
+        loss_grad = square_loss_grad(pred_val * score, score)
         
-        for key, value, bounds in zip(self.function.grad_names, self.function.grad_vals, self.bounds):
+        for key, grad, bounds, learning_rate in zip(self.function.grad_names, self.function.grad_vals, self.bounds, self.learning_rates):
+
+            if key in self.fixed:
+                continue
 
             #chain rule to get gradient w.r.t loss func
             #use np.dot in order to accomodate vector and float vals
-            step = np.dot(value, loss_grad)
-                
-            #adjust lambda according to scheduler
-            learning_rate = self.calculate_learning_rate(key, step)
+            step = np.dot(grad, loss_grad) * learning_rate
 
-            step = learning_rate * step
+            #print(key, loss_grad, grad, step)
+
             updated = getattr(self.function, key) - step
 
             #set updated value given constraints
             setattr(self.function, key, min(max(bounds[0], updated), bounds[1]))
 
             if np.isnan(updated):
-                raise ValueError(f'updated value is Nan for {key, value}')
+                raise ValueError(f'updated value is Nan for {key, grad}')
 
 
 class tunaSimTrainer(funcTrainer):
@@ -298,19 +302,12 @@ class tunaSimTrainer(funcTrainer):
             balance_column = balance_column
         )
 
-        self.bounds = [self.bounds[key] for key in self.function.grad_names]
-
-    def loss_grad(self, x, y):
-
-        return 2 * (x - y)
-
     def get_match_grad_components(self, sub_df):
 
         #in the first round, we want to pick the index with the highest similarity scores
         if sub_df.shape[0] > 1:
 
             sims = self.function.predict_for_dataset(sub_df)
-        
         
             #then, update gradients based on the best match for this grouping column value
             best_match_index = np.argmax(sims)
@@ -339,7 +336,8 @@ class tunaQueryTrainer(funcTrainer):
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
             balance_column: str = None,
-            identity_column: str = None
+            identity_column: str = None,
+            fixed: set = set()
     ):
         
         self.identity_column = identity_column
@@ -357,33 +355,20 @@ class tunaQueryTrainer(funcTrainer):
             ad_slope = ad_slope,
             scale_holdover_vals = scale_holdover_vals,
             groupby_column = groupby_column,
-            balance_column = balance_column) 
+            balance_column = balance_column,
+            fixed = fixed) 
         
-    def loss_grad(self, pred_value, score):
-
-        label_ind = np.where(pred_value[1] == score)
-
-        output = np.zeros(len(pred_value[0]))
-        output[label_ind] = 1 / pred_value[0][label_ind]
-
-        return output
+        self.bounds = [bounds[key] for key in self.init_vals]
+        self.learning_rates = [self.learning_rates for _ in self.bounds]
 
     def get_match_grad_components(self, sub_df):
         """ 
         match the format of get match grad for similarities
         """
-
-        #retain the true identity label for this search
-        #'' if there is no match
-        label = '' 
-        for i in zip(sub_df['score'], sub_df[self.identity_column]):
-
-            if i[0] == 1:
-                label = i[1]
-                break
+        
+        label = np.array(sub_df['score'] == True).astype(np.int64)
 
         preds = np.array(sub_df['preds'], dtype = np.float64)
-        identities = np.array(sub_df[self.identity_column], dtype = np.str_)
 
-        return label, self.function.predict(preds, identities, grads = True)
+        return label, self.function.predict(preds, grads = True)
     

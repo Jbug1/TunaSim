@@ -81,8 +81,7 @@ class tunaSim:
     @njit
     def smooth_reweight(array,
                         a,
-                        b,
-                        grads = True):
+                        b):
         
         """ flexible exponenet simple reweight"""
         
@@ -272,239 +271,25 @@ class tunaSim:
 
 @njit
 def smooth_reweight_grads(array,
-                        intercept,
                         a,
                         b):
     
     """ flexible exponenet simple reweight"""
     
     b_component = np.power(array, b)
-    combined = a * b_component
-    res = intercept + combined
+    res = a * b_component
 
-    return res, np.power(array,0), b_component, combined * np.log(array), a * b * np.power(array, b - 1)
+    return res, b_component, res * np.log(array)
 
 @njit
 def smooth_reweight(array,
-                    intercept,
                     a,
                     b):
                         
     """ flexible exponenet simple reweight"""
 
 
-    return intercept + a * np.power(array, b)
-
-
-@njit
-def sub_predict_grads(scores,
-                        match_names,
-                        none_prob_int,
-                        none_prob_a,
-                        none_prob_b,
-                        raw_scores_int,
-                        raw_scores_a,
-                        raw_scores_b,
-                        top_from_next_int,
-                        top_from_next_a,
-                        top_from_next_b,
-                        dif_from_top_int,
-                        dif_from_top_a,
-                        dif_from_top_b,
-                        weight_combine):
-    
-    """ 
-    steps:
-        1) get prob of not matching any of these labels
-        2) reorder intensities by prob of match descending
-        3) reweight probabilities according to which transformations  are triggered
-        4) consolidate probabilities of match
-        5) softmax
-    """
-
-    components = np.zeros((3, scores.shape[0] + 1), dtype = np.float64)
-
-    score_grads = np.zeros((3, scores.shape[0] + 1), dtype = np.float64)
-
-    grads = np.zeros((12, scores.shape[0] + 1), dtype = np.float64)
-
-    none_prob, none_grad_int, none_grad_a, none_grad_b, _ = smooth_reweight_grads(np.max(scores),
-                                                                                            none_prob_int,
-                                                                                            none_prob_a,
-                                                                                            none_prob_b)
-
-    #prepend the predicted value for None, represented by empty string
-    scores_ = np.zeros((scores.shape[0] + 1), dtype = np.float64)
-    match_names_ = np.array([''] + list(match_names))
-
-    scores_[0] = none_prob
-    scores_[1:] += scores
-
-    match_names_[0] = ''
-    match_names_[1:] = match_names
-
-    #negate to get in descending order
-    sort_order = np.argsort(-scores_)
-
-    #retain the index of the original None
-    none_ind_mask = (sort_order == 0).astype(np.int64)
-
-    #sort scores in descending order
-    scores_ = scores_[sort_order]
-    match_names_ = match_names_[sort_order]
-
-    #set none prob gradients
-    grads[0] = none_ind_mask * none_grad_int #none_grad_int
-    grads[1] = none_ind_mask * none_grad_a #none_grad_a
-    grads[2] = none_ind_mask * none_grad_b #none_grad_b
-
-    #update components and their respective gradients
-    components[0], grads[3], grads[4], grads[5], score_grads[0] = smooth_reweight_grads(scores_,
-                                                                            raw_scores_int,
-                                                                            raw_scores_a,
-                                                                            raw_scores_b)
-    
-    
-    components[1], grads[6], grads[7], grads[8], score_grads[1] = smooth_reweight_grads(np.zeros(scores_.shape[0]) + scores[0] - scores_[1], 
-                                                                                            top_from_next_int,
-                                                                                            top_from_next_a,
-                                                                                            top_from_next_b)
-    
-    components[2], grads[9], grads[10], grads[11], score_grads[2] = smooth_reweight_grads(np.max(scores_) - scores_, 
-                                                                                                dif_from_top_int,
-                                                                                                dif_from_top_a,
-                                                                                                dif_from_top_b)
-    
-    #combine wieghts according to specified protocol
-    if weight_combine == 'add':
-
-        components = np.sum(components, axis = 0)
-        score_grads = np.sum(score_grads, axis = 0)
-
-        grads[0] *= score_grads
-        grads[1] *= score_grads
-        grads[2] *= score_grads
-
-    else:
-
-        score_grads = score_grads[0] * score_grads[1] * score_grads[2]
-
-        grads[0] *= score_grads
-        grads[1] *= score_grads
-        grads[2] *= score_grads
-
-        sub = components[1] * components[2]
-        grads[3] *= sub
-        grads[4] *= sub
-        grads[5] *= sub
-
-        sub = components[0] * components[2]
-        grads[6] *= sub
-        grads[7] *= sub
-        grads[8] *= sub
-
-        sub = components[0] * components[1]
-        grads[9] *= sub
-        grads[10] *= sub
-        grads[11] *= sub
-
-        components = components[0] * components[1] * components[2]
-
-    #softmax
-    components = np.exp(components)
-    components /= np.sum(components)
-
-    # chain rule
-    softmax_deriv = components * (1 - components)
-    grads = grads * softmax_deriv
-
-    return components, match_names_, grads
-
-@njit
-def sub_predict(scores,
-                match_names,
-                none_prob_int,
-                none_prob_a,
-                none_prob_b,
-                raw_scores_int,
-                raw_scores_a,
-                raw_scores_b,
-                top_from_next_int,
-                top_from_next_a,
-                top_from_next_b,
-                dif_from_top_int,
-                dif_from_top_a,
-                dif_from_top_b,
-                weight_combine):
-    
-    """ 
-    steps:
-        1) get prob of not matching any of these labels
-        2) reorder intensities by prob of match descending
-        3) reweight probabilities according to which transformations  are triggered
-        4) consolidate probabilities of match
-        5) softmax
-    """
-
-    components = np.zeros((3, scores.shape[0] + 1), dtype = np.float64)
-
-    none_prob = smooth_reweight(np.max(scores),
-                                none_prob_int,
-                                none_prob_a,
-                                none_prob_b)
-
-    #prepend the predicted value for None, represented by empty string
-    scores_ = np.zeros((scores.shape[0] + 1), dtype = np.float64)
-    match_names_ = np.array([''] + list(match_names))
-
-    scores_[0] = none_prob
-    scores_[1:] += scores
-
-    match_names_[0] = ''
-    match_names_[1:] = match_names
-
-    #negate to get in descending order
-    sort_order = np.argsort(-scores_)
-
-    #retain the index of the original None
-    none_ind_mask = (sort_order == 0).astype(np.int64)
-
-    #sort scores in descending order
-    scores_ = scores_[sort_order]
-    match_names_ = match_names_[sort_order]
-
-    #update components and their respective gradients
-    components[0] = smooth_reweight(scores_,
-                                    raw_scores_int,
-                                    raw_scores_a,
-                                    raw_scores_b)
-    
-    
-    components[1] = smooth_reweight(np.zeros(scores_.shape[0]) + scores[0] - scores_[1], 
-                                    top_from_next_int,
-                                    top_from_next_a,
-                                    top_from_next_b)
-    
-    
-    components[2] = smooth_reweight(np.max(scores_) - scores_, 
-                                    dif_from_top_int,
-                                    dif_from_top_a,
-                                    dif_from_top_b)
-    
-    #combine wieghts according to specified protocol
-    if weight_combine == 'add':
-
-        components = np.sum(components, axis = 0)
-
-    else:
-
-        components = components[0] * components[1] * components[2]
-
-    #softmax
-    components = np.exp(components)
-    components /= np.sum(components)
-
-    return components, match_names_
+    return a * np.power(array, b)
 
 
 class tunaQuery:
@@ -514,32 +299,20 @@ class tunaQuery:
     '''
 
     def __init__(self,
-                 raw_scores_int: float = 0,
                  raw_scores_a: float = None,
                  raw_scores_b: float = 0,
-                 dif_from_next_int: float = 0,
                  dif_from_next_a: float = None,
                  dif_from_next_b: float = 0,
-                 dif_from_top_int: float = 0,
                  dif_from_top_a: float = None,
                  dif_from_top_b: float = 0,
-                 none_prob_int: float = 1,
-                 none_prob_a: float = 1,
-                 none_prob_b: float = 1,
                  weight_combine: str = 'add'):
         
-        self.raw_scores_int = raw_scores_int
         self.raw_scores_a = raw_scores_a
         self.raw_scores_b = raw_scores_b
-        self.dif_from_next_int = dif_from_next_int
         self.dif_from_next_a = dif_from_next_a
         self.dif_from_next_b = dif_from_next_b
-        self.dif_from_top_int = dif_from_top_int
         self.dif_from_top_a = dif_from_top_a
         self.dif_from_top_b = dif_from_top_b
-        self.none_prob_int = none_prob_int
-        self.none_prob_a = none_prob_a
-        self.none_prob_b = none_prob_b
         self.weight_combine = weight_combine
 
         if self.weight_combine == 'add':
@@ -552,23 +325,15 @@ class tunaQuery:
             self.dif_from_next_a = (self.dif_from_next_a or 1)
             self.dif_from_top_a = (self.dif_from_top_a or 1)
 
-        self.grad_names = np.array(['raw_scores_int',
-                            'raw_scores_a',
-                            'raw_scores_b',
-                            'dif_from_next_int',
-                            'dif_from_next_a',
-                            'dif_from_next_b',
-                            'dif_from_top_int',
-                            'dif_from_top_a',
-                            'dif_from_top_b',
-                            'none_prob_int',
-                            'none_prob_a',
-                            'none_prob_b'])
-            
-        self.grad_vals = np.zeros(self.grad_names.shape[0])
+        self.grad_names = np.array(['raw_scores_a',
+                                    'raw_scores_b',
+                                    'dif_from_next_a',
+                                    'dif_from_next_b',
+                                    'dif_from_top_a',
+                                    'dif_from_top_b'])
 
 
-    def predict(self, scores, match_names, grads = True):
+    def predict(self, scores, grads = True):
         """ 
         steps:
             1) get prob of not matching any of these labels
@@ -581,39 +346,139 @@ class tunaQuery:
 
         if grads:
 
-            pred_val, match_names, self.grads = sub_predict_grads(scores,
-                                           match_names,
-                                           self.none_prob_int,
-                                           self.none_prob_a,
-                                           self.none_prob_b,
-                                           self.raw_scores_int,
-                                           self.raw_scores_a,
-                                           self.raw_scores_b,
-                                           self.dif_from_next_int,
-                                           self.dif_from_next_a,
-                                           self.dif_from_next_b,
-                                           self.dif_from_next_int,
-                                           self.dif_from_top_a,
-                                           self.dif_from_top_b,
-                                           self.weight_combine)
+            pred_val, self.grad_vals = tunaQuery.sub_predict_grads(scores,
+                                                                    self.raw_scores_a,
+                                                                    self.raw_scores_b,
+                                                                    self.dif_from_next_a,
+                                                                    self.dif_from_next_b,
+                                                                    self.dif_from_top_a,
+                                                                    self.dif_from_top_b,
+                                                                    self.weight_combine)
             
         else:
 
-            pred_val, match_names  =  sub_predict(scores,
-                                           match_names,
-                                           self.none_prob_int,
-                                           self.none_prob_a,
-                                           self.none_prob_b,
-                                           self.raw_scores_int,
-                                           self.raw_scores_a,
-                                           self.raw_scores_b,
-                                           self.dif_from_next_int,
-                                           self.dif_from_next_a,
-                                           self.dif_from_next_b,
-                                           self.dif_from_next_int,
-                                           self.dif_from_top_a,
-                                           self.dif_from_top_b,
-                                           self.weight_combine)
+            pred_val =  tunaQuery.sub_predict(scores,
+                                            self.raw_scores_a,
+                                            self.raw_scores_b,
+                                            self.dif_from_next_a,
+                                            self.dif_from_next_b,
+                                            self.dif_from_top_a,
+                                            self.dif_from_top_b,
+                                            self.weight_combine)
        
-        return pred_val, match_names
+        return pred_val
+    
+    @staticmethod
+    @njit
+    def sub_predict_grads(scores,
+                            raw_scores_a,
+                            raw_scores_b,
+                            top_from_next_a,
+                            top_from_next_b,
+                            dif_from_top_a,
+                            dif_from_top_b,
+                            weight_combine):
+        
+        """ 
+        steps:
+            1) reweight probabilities according to which transformations  are triggered
+            2) consolidate probabilities of match
+            3) softmax
+        """
+
+
+        components = np.zeros((3, scores.shape[0]), dtype = np.float64)
+
+        grads = np.zeros((6, scores.shape[0]), dtype = np.float64)
+
+        #update components and their respective gradients
+        components[0], grads[0], grads[1] = smooth_reweight_grads(scores,
+                                                                 raw_scores_a,
+                                                                 raw_scores_b)
+        
+        components[1], grads[2], grads[3] = smooth_reweight_grads(np.zeros(scores.shape[0]) + scores[0] - scores[1], 
+                                                                            top_from_next_a,
+                                                                            top_from_next_b)
+        
+        components[2], grads[4], grads[5] = smooth_reweight_grads(scores[0] - scores, 
+                                                                  dif_from_top_a,
+                                                                  dif_from_top_b)
+        
+        #avoid nan
+        grads[5][0] = 0
+
+        #combine wieghts according to specified protocol
+        if weight_combine == 'add':
+
+            components = np.sum(components, axis = 0)
+
+        else:
+
+            sub = components[1] * components[2]
+            grads[0] *= sub
+            grads[1] *= sub
+            grads[2] *= sub
+
+            sub = components[0] * components[2]
+            grads[3] *= sub
+            grads[4] *= sub
+            grads[5] *= sub
+
+            sub = components[0] * components[1]
+            grads[6] *= sub
+            grads[7] *= sub
+            grads[8] *= sub
+
+            components = components[0] * components[1] * components[2]
+
+        #sigmoid
+        components = sigmoid(components)
+        sig_grad = components * (1 - components)
+        grads *= sig_grad
+
+        return components, grads
+
+    @staticmethod
+    @njit
+    def sub_predict(scores,
+                    raw_scores_a,
+                    raw_scores_b,
+                    top_from_next_a,
+                    top_from_next_b,
+                    dif_from_top_a,
+                    dif_from_top_b,
+                    weight_combine):
+        
+        """ 
+        steps:
+            1) reweight probabilities according to which transformations  are triggered
+            2) consolidate probabilities of match
+            3) softmax
+        """
+
+        components = np.zeros((3, scores.shape[0]), dtype = np.float64)
+
+        #update components and their respective gradients
+        components[0] = smooth_reweight(scores,
+                                        raw_scores_a,
+                                        raw_scores_b)
+        
+        components[1] = smooth_reweight(np.zeros(scores.shape[0]) + scores[0] - scores[1], 
+                                        top_from_next_a,
+                                        top_from_next_b)
+        
+        components[2] = smooth_reweight_grads(scores[0] + 1e-7 - scores, 
+                                            dif_from_top_a,
+                                            dif_from_top_b)
+        
+        #combine wieghts according to specified protocol
+        if weight_combine == 'add':
+
+            components = np.sum(components, axis = 0)
+
+        else:
+
+            components = components[0] * components[1] * components[2]
+
+        return sigmoid(components)
 
