@@ -50,12 +50,11 @@ def main(config_path):
                                    val_2_path = f'{config.match_directory}/matched/val_2.pkl',
                                    test_path = f'{config.match_directory}/matched/test.pkl',
                                    tunaSim_trainers = config.tunaSim_trainers,
-                                   scoreByGroup_trainers = config.scoreByQuery_trainers,
                                    intermediate_outputs_path = config.intermediate_outputs_path,
                                    tunaSim_aggregation_candidates = config.tunaSim_aggregation_candidates,
-                                   scoreByGroup_aggregation_candidates = config.scoreByGroup_aggregation_candidates,
+                                   query_adjustment_candidates = config.query_adjustment_candidates,
                                    residual_downsampling_percentile = config.residual_downsampling_percentile,
-                                   aggregator_selection_method = config.aggregator_selection_method)
+                                   model_selection_method = config.model_selection_method)
     
     try:
         network.fit()
@@ -73,17 +72,3 @@ def main(config_path):
 if __name__ == '__main__':
 
     main(argv[1])
-    
-
-    
-
-
-
-    
-
-        
-
-
-
-
-

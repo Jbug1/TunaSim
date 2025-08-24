@@ -1,4 +1,4 @@
-import TunaSims
+import tunas
 import numpy as np
 from typing import List
 import copy
@@ -47,6 +47,7 @@ class funcTrainer:
             balance_column: str = None,
             fixed: set = set()
     ):
+        
         self.name = name
         self.init_vals = init_vals
         self.bounds = bounds
@@ -65,6 +66,8 @@ class funcTrainer:
         self.balance_flag = 0
 
         self.log = getLogger(__name__)
+
+        self.input_lengths = list()
 
         #self.bounds = [self.bounds[key] for key in self.function.grad_names]
 
@@ -202,20 +205,14 @@ class funcTrainer:
 
             index = self.get_match_rows()
 
+            self.input_lengths.append(len(index))
+
             sub = train_data.iloc[index]
-
-            if sum(sub['score']) == 0:
-                print('unmatched', index, _)
-                self.unmatched += 1
-
-            elif sub[sub['score'] == True].iloc[0]['preds'] != max(sub['preds']):
-                self.top_wrong +=1
                                                            
-            #select only what we are interested in grouping and retrieve grads
-            label, pred_val = self.get_match_grad_components(sub)
-            
             #update with the score of choice and funcOb's loss function
-            self.step(label, pred_val)    
+            score, pred_val = self.get_match_grad_components(sub)
+
+            self.step(score, pred_val)    
 
             self.n_iter += 1
     
@@ -245,7 +242,7 @@ class funcTrainer:
     def step(self, score, pred_val):
 
         #convert gradient of f^ to gradient of loss func
-        loss_grad = square_loss_grad(pred_val * score, score)
+        loss_grad = square_loss_grad(pred_val, score)
         
         for key, grad, bounds, learning_rate in zip(self.function.grad_names, self.function.grad_vals, self.bounds, self.learning_rates):
 
@@ -254,7 +251,7 @@ class funcTrainer:
 
             #chain rule to get gradient w.r.t loss func
             #use np.dot in order to accomodate vector and float vals
-            step = np.dot(grad, loss_grad) * learning_rate
+            step = grad * loss_grad * learning_rate
 
             #print(key, loss_grad, grad, step)
 
@@ -337,11 +334,10 @@ class tunaQueryTrainer(funcTrainer):
             groupby_column: str = None,
             balance_column: str = None,
             identity_column: str = None,
-            fixed: set = set()
-    ):
+            fixed: set = set()):
         
         self.identity_column = identity_column
-        self.function = TunaSims.tunaQuery
+        self.function = tunas.tunaTop
 
         super().__init__(name = name,
             init_vals = init_vals,
@@ -366,9 +362,8 @@ class tunaQueryTrainer(funcTrainer):
         match the format of get match grad for similarities
         """
         
-        label = np.array(sub_df['score'] == True).astype(np.int64)
+        label = np.array(sub_df['score'] == True).astype(np.int64)[0] #we only want the label of the top hit
 
-        preds = np.array(sub_df['preds'], dtype = np.float64)
+        preds = np.array(sub_df['preds'], dtype = np.float64) #keep all scores to move top based on shape
 
-        return label, self.function.predict(preds, grads = True)
-    
+        return label, self.function.predict(preds, grads = True)[0] #top hit only for now

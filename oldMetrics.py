@@ -1,113 +1,200 @@
 # old similarity measures
 import scipy
+import pandas as pd
 import numpy as np
 from numba import njit
 from joblib import Parallel, delayed
+from sklearn.metrics import roc_auc_score
 
 
-def _weight_intensity_by_entropy(x, entropy_x):
-    WEIGHT_START = 0.25
-    ENTROPY_CUTOFF = 3
-    weight_slope = (1 - WEIGHT_START) / ENTROPY_CUTOFF
+class oldMetricEvaluator:
 
-    if np.sum(x) > 0:
-        entropy_x = scipy.stats.entropy(x)
-        if entropy_x < ENTROPY_CUTOFF:
-            weight = WEIGHT_START + weight_slope * entropy_x
-            x = np.power(x, weight)
-            x_sum = np.sum(x)
-            x = x / x_sum
-    return x
+    def __init__(self,
+                 dataset,
+                 groupby_columns,
+                 intermediates_path,
+                 performance_path):
+        
+        self.dataset = dataset
+        self.groupby_columns = groupby_columns
+        self.intermediates_path = intermediates_path
+        self.performance_path = performance_path
 
-@njit
-def harmonic_mean_distance(p, q):
-    r"""
-    Harmonic mean distance:
+        self.metrics = [oldMetricEvaluator.entropy_similarity, 
+                    oldMetricEvaluator.dot_product_similarity,
+                    oldMetricEvaluator.harmonic_mean_similarity,
+                    oldMetricEvaluator.probabilistic_symmetric_chi_squared_similarity,
+                    oldMetricEvaluator.lorentzian_similarity,
+                    oldMetricEvaluator.matusita_similarity,
+                    oldMetricEvaluator.harmonic_mean_similarity,
+                    oldMetricEvaluator.fidelity_similarity]
+        
+        self.names = ['entropy',
+                'dot_product',
+                'harmonic_mean',
+                'chi_squared',
+                'lorentzian',
+                'matusita',
+                'harmonic_mean',
+                'fidelity']
 
-    .. math::
+    @staticmethod
+    @njit
+    def _weight_intensity_by_entropy(x, entropy_x):
 
-        1-2\sum(\frac{P_{i}Q_{i}}{P_{i}+Q_{i}})
-    """
+        WEIGHT_START = 0.25
+        ENTROPY_CUTOFF = 3
+        weight_slope = (1 - WEIGHT_START) / ENTROPY_CUTOFF
 
-    return 2 * np.sum(p * q / (p + q))
+        weight = min(WEIGHT_START + weight_slope * entropy_x, 1)
+        x = np.power(x, weight)
+        x = x / np.sum(x)
 
-@njit
-def lorentzian_distance(p, q):
-    r"""
-    Lorentzian distance:
+        return x
 
-    .. math::
+    @staticmethod
+    @njit
+    def harmonic_mean_similarity(p, q):
+        r"""
+        Harmonic mean distance:
 
-        \sum{\ln(1+|P_i-Q_i|)}
-    """
+        .. math::
 
-    return 1 - np.sum(np.log(1 + np.abs(p - q)))
+            1-2\sum(\frac{P_{i}Q_{i}}{P_{i}+Q_{i}})
+        """
 
-@njit
-def matusita_distance(p, q):
-    r"""
-    Matusita distance:
+        return 1 - 2 * np.sum(p * q / (p + q))
 
-    .. math::
+    @staticmethod
+    @njit
+    def lorentzian_similarity(p, q):
+        r"""
+        Lorentzian distance:
 
-        \sqrt{\sum(\sqrt{P_{i}}-\sqrt{Q_{i}})^2}
-    """
+        .. math::
 
-    return 1- np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2))
+            \sum{\ln(1+|P_i-Q_i|)}
+        """
 
-@njit
-def probabilistic_symmetric_chi_squared_distance(p, q):
-    r"""
-    Probabilistic symmetric χ2 distance:
+        return 1 - np.sum(np.log(1 + np.abs(p - q)))
 
-    .. math::
+    @staticmethod
+    @njit
+    def matusita_similarity(p, q):
+        r"""
+        Matusita distance:
 
-        \frac{1}{2} \times \sum\frac{(P_{i}-Q_{i}\ )^2}{P_{i}+Q_{i}\ }
-    """
- 
-    return 1- (1 / 2 * np.sum(np.power(p - q, 2) / (p + q)))
+        .. math::
 
+            \sqrt{\sum(\sqrt{P_{i}}-\sqrt{Q_{i}})^2}
+        """
+        return 1 - np.sqrt(np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2))) / np.sqrt(2)
 
-def entropy_distance(p, q):
-    r"""
-    Unweighted entropy distance:
+    @staticmethod
+    @njit
+    def probabilistic_symmetric_chi_squared_similarity(p, q):
+        r"""
+        Probabilistic symmetric χ2 distance:
 
-    .. math::
+        .. math::
 
-        -\frac{2\times S_{PQ}-S_P-S_Q} {ln(4)}, S_I=\sum_{i} {I_i ln(I_i)}
-    """
-   
-    merged = p + q
-    entropy_increase = 2 * \
-                       scipy.stats.entropy(merged) - scipy.stats.entropy(p) - \
-                       scipy.stats.entropy(q)
+            \frac{1}{2} \times \sum\frac{(P_{i}-Q_{i}\ )^2}{P_{i}+Q_{i}\ }
+        """
     
-    return 1 - entropy_increase
+        return 1 - (1 / 2 * np.sum(np.power(p - q, 2) / (p + q)))
 
-@njit
-def dot_product_distance(p, q):
-    r"""
-    Dot product distance:
+    @staticmethod
+    def entropy_similarity(p, q):
+        r"""
+        Unweighted entropy distance:
 
-    .. math::
+        .. math::
 
-        1 - \sqrt{\frac{(\sum{Q_iP_i})^2}{\sum{Q_i^2\sum P_i^2}}}
-    """
+            -\frac{2\times S_{PQ}-S_P-S_Q} {ln(4)}, S_I=\sum_{i} {I_i ln(I_i)}
+        """
     
-    score = np.power(np.sum(q * p), 2) / (
-        np.sum(np.power(q, 2)) * np.sum(np.power(p, 2))
-    )
-    return np.sqrt(score)
+        merged = p + q
+        entropy_increase = 2 * \
+                        scipy.stats.entropy(merged) - scipy.stats.entropy(p) - \
+                        scipy.stats.entropy(q)
+        
+        return 1 - min(1, entropy_increase / np.log(4))
 
-def evaluate_metrics(queries, targets):
-    """ 
-    Evaluates this set of old measures for a collection of queries and targets
-    """
+    @staticmethod
+    @njit
+    def dot_product_similarity(p, q):
+        r"""
+        Dot product distance:
 
-    metrics = [entropy_distance, ]
-    #unweighted first
-    for query, target in zip(queries, targets):
+        .. math::
+
+            1 - \sqrt{\frac{(\sum{Q_iP_i})^2}{\sum{Q_i^2\sum P_i^2}}}
+        """
+        
+        score = np.power(np.sum(q * p), 2) / (
+            np.sum(np.power(q, 2)) * np.sum(np.power(p, 2))
+        )
+        return 1 - np.sqrt(score)
+
+    @staticmethod
+    @njit
+    def fidelity_similarity(p, q):
+        r"""
+        Fidelity distance:
+
+        .. math::
+
+            1-\sum\sqrt{P_{i}Q_{i}}
+        """
+        return np.sum(np.sqrt(p * q))
+
+    def score_all_matches(self, queries, targets, sim_func):
+
+        res = list()
+        for query, target in zip(queries, targets):
+
+            res.append(sim_func(query, target))
+
+        return res
+
+    def evaluate_and_write_results(self):
+        """ 
+        Evaluates this set of old measures for a collection of queries and targets
+        """
+
+        #get unweighted scores
+        results, performance = self.get_evals()
+        results.to_csv(f'{self.intermediates_path}/old_metrics_unweighted.csv')
+        performance.to_csv(f'{self.performance_path}/old_metrics_unweighted.csv')
+
+        #get unweighted scores
+        results, performance = self.get_evals(reweighted = True)
+        results.to_csv(f'{self.intermediates_path}/old_metrics_weighted.csv')
+        performance.to_csv(f'{self.performance_path}/old_metrics_weighted.csv')
 
         
+    def get_evals(self, reweighted = False):
 
+        queries = self.dataset['query'].to_numpy()
+        targets = self.dataset['target'].to_numpy()
 
+        if reweighted:
+
+            queries = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in queries]
+            targets = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in targets]
+
+        #get weighted scores
+        results = Parallel(n_jobs = -1)(delayed(self.score_all_matches)(queries, 
+                                                                        targets, 
+                                                                        metric) for metric in self.metrics)
+        
+        results = pd.DataFrame({self.names[i]: results[i] for i in range(len(self.names))})
+        for column in self.groupby_columns + ['score']:
+            results.insert(0, column, self.dataset[column].to_list())
+        
+        #get performance
+        performance = results.groupby(self.groupby_columns).max()
+        performance = [[name, roc_auc_score(performance['score'], performance[name])] for name in self.names]
+        performance = pd.DataFrame(performance, columns = ['name', 'performance'])
+        
+        return results, performance
