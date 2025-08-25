@@ -1,2 +1,2 @@
 # TunaSim
-Tuneable Spectral Similarity
+Tunable Spectral Similarity

@@ -51,7 +51,7 @@ class IdentityMatchNetwork:
         function that runs script to fit the whole network
         """
 
-        # overall_start = time.time()
+        overall_start = time.time()
 
         #fit initial tunasims
         self.log.info('beginning tunaSim training')
@@ -83,7 +83,6 @@ class IdentityMatchNetwork:
                     'val': val_aucs}).to_csv(f'{self.intermediate_outputs_path}/performance/tuna_agg_performances.csv')
         
         self.log.info('tunasim aggreagtor selected')
-        print(stop)
         
         #create train aggregated preds
         train_aggregated_preds = self.create_tunasim_aggregated_preds(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'))
@@ -100,21 +99,14 @@ class IdentityMatchNetwork:
         val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv')
         del(val_2_aggregated_preds)
 
-
         #fit group adjustment layer
         #train dataset now includes the first validation dataset
-        self.log.info('beginning adjustment tunasims')
-        self.fit_adjustment_tunasims(pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
+        self.log.info('beginning query adjustment')
+        self.fit_query_adjustment(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
                                                 pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv')]),
-                                     val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'))
+                                  val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'))
 
-        #create adjustment layer preds
-        self.log.info('creating adjustment preds')
-        self.create_adjustment_preds()
 
-        #fit adjustment aggregator
-        self.log.info('begining adjustment aggregator')
-        self.fit_adjustment_aggregator()
 
         self.log.info(f'network training complete in {round((time.time() - overall_start) / 60), 4} minutes')
 
@@ -215,72 +207,14 @@ class IdentityMatchNetwork:
         preds[groupby_column] = dataset[groupby_column]
         preds['score'] = dataset['score']
         return preds.groupby(groupby_column).max()
+    
+
+    def fit_query_adjustment(self,
+                             train,
+                             val):
+        
+        self.query_adjustment_layer = queryAdjustmentLayer(self.query_adjustment_candidates)
+
+        
         
 
-    def select_aggregator(self,
-                          train,
-                          val,
-                          candidate_models):
-        
-        """ 
-        fit the first aggregation layer tunasims to a score by tunasim groupby column
-        """
-
-        train_performance = list()
-        val_performance = list()
-
-        counter = 0
-        for model in candidate_models:
-
-            #exclude groupby and label from inputs
-            model.fit(train.iloc[:,:-1], train.iloc[:,-1])
-
-            #generate validation preds
-            train_preds = model.predict_proba(train.iloc[:,:-1])[:,1]
-            val_preds = model.predict_proba(val.iloc[:,:-1])[:,1]
-
-            #track validation performance
-            train_performance.append(roc_auc_score(train.iloc[:,-1], train_preds))
-            val_performance.append(roc_auc_score(val.iloc[:,-1], val_preds))
-
-            counter +=1 
-            if counter % 100 == 0:
-                self.log.info(f'tested {counter} aggregator models')
-
-        if self.aggregator_selection_method == 'top':
-
-            aggregation_model = self.tunaSim_aggregation_candidates[argmax(val_performance)]
-
-        else:
-
-            #logic from ng paper goes here
-            pass
-
-        return aggregation_model, train_performance, val_performance
-
-
-    def create_tunasim_aggregated_preds(self):
-        """ 
-        aggregate tunasims and generate next layer of data
-        """
-        pass
-
-
-    def fit_query_adjustment_tunasims(self):
-        """ 
-        fitting of 'curve' adjustment for each query
-        """
-        pass
-
-
-
-
-    def evaluate_tunasim_performance(self):
-        """ 
-        
-        """
-
-        pass
-
-    def evaluate_old_metric_performance(self):
-        pass
