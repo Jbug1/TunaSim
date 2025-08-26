@@ -1,17 +1,13 @@
 from sklearn.metrics import roc_auc_score
-from numpy import argmax
 from typing import List
-from logging import getLogger
 #from scipy.stats import entropy
-from time import time
-from numba import njit
+from numba import njit, typed, types
 import numpy as np
 import pandas as pd
-from itertools import chain
 from numpy.typing import NDArray
-from numba import typed, types
+from joblib import Parallel, delayed
 
-class modelLayer:
+class ensembleLayer:
 
     def __init__(self,
                  candidates: List,
@@ -27,7 +23,7 @@ class modelLayer:
         return self.final_model.predict_proba(data)[:,1]
     
 
-    def select_model(self, train, val):
+    def fit(self, train, val):
 
         """ 
         fit the first aggregation layer tunasims to a score by tunasim groupby column
@@ -51,7 +47,7 @@ class modelLayer:
 
         if self.selection_method == 'top':
 
-            self.final_model = self.candidates[argmax(self.val_performance)]
+            self.final_model = self.candidates[np.argmax(self.val_performance)]
 
         else:
 
@@ -61,7 +57,8 @@ class modelLayer:
 
 class groupAdjustmentLayer:
     """
-    queryAdjustmentLayer recalibrates scores based on our confidence on a query level
+    wrapper around ensemble layer, as the only difference is input transformation
+    groupAdjustmentLayer recalibrates scores based on our confidence on a query level
     how likely is the query to have a top hit that is correct, based on train data?
     inputs are: 
         - the distance from the top hit to the next hit (aggregated score) and entropy 
@@ -72,15 +69,13 @@ class groupAdjustmentLayer:
     def __init__(self,
                  candidates: List = None,
                  selection_method: str = 'top',
-                 groupby_column: str = 'queryID',
-                 jobs: int = 1):
+                 groupby_column: str = 'queryID'):
         
         self.candidates = candidates
         self.selection_method = selection_method
         self.groupby_column = groupby_column
-        self.jobs = jobs
         
-        self.model_layer = modelLayer(candidates = candidates,
+        self.model_layer = ensembleLayer(candidates = candidates,
                                       selection_method = selection_method)
         
         
@@ -180,7 +175,7 @@ class groupAdjustmentLayer:
         return top_from_next, entropy
     
 
-    def select_model(self, train, val):
+    def fit(self, train, val):
         """ 
         1) get multi hit data for train and val
         2) select best model for multi hit
@@ -191,7 +186,7 @@ class groupAdjustmentLayer:
         train_ = self.process_input_data(train)
         val_ = self.process_input_data(val)
 
-        self.model_layer.select_model(train_, val_)
+        self.model_layer.fit(train_, val_)
 
 
     def predict(self, data):
@@ -244,6 +239,106 @@ class groupAdjustmentLayer:
             index += 1
 
         return output_array
+    
+class tunaSimLayer:
 
+    def __init__(self,
+                 trainers,
+                 residual_downsample_percentile,
+                 inference_jobs = 1):
+        
+        self.trainers = trainers
+        self.residual_downsample_percentile = residual_downsample_percentile
+        self.inference_jobs = inference_jobs
+        self.percent_pos_before_downsample = list()
+        
+    def residual_downsample_tunasims(self, dataset, trainer):
+        """ 
+        keep only groupby column groups where residual is above threshold
+        """
 
+        dataset['preds'] = trainer.function.predict_for_dataset(dataset)
+        dataset['residual'] = abs(dataset['score'] - dataset['preds'])
 
+        #we will base this off minimum residual (best score) by group
+        temp = dataset[trainer.groupby_column + ['score','residual']].groupby(trainer.groupby_column).min()
+
+        residual_thresh = np.percentile(temp['residual'], self.residual_downsample_percentile)
+        self.percent_pos_before_downsample.append(round(len(temp[temp['score'] == 1])/len(temp) * 100,4))
+
+        #track balance column distribution from groups above residual thresh
+        pos = 0
+        neg = 0
+
+        #track groups where we are above residual threshold to train on in next round
+        #index of temp is now tuples of the groupby column
+        bad_ids = set()
+        for residual, id, score in zip(temp['residual'], 
+                                       temp.index,
+                                        temp['score']):
+
+            if residual >= residual_thresh:
+                bad_ids.add(id)
+
+                if score == 1:
+                    pos+=1
+
+                else:
+                    neg+=1
+
+        #go back and grab the indexes of all groups that were above residual threshold
+        #the ids we want to compare are row level tuples of any groupby column
+        residual_inds = list()
+        for index, id in zip(list(range(dataset.shape[0])), 
+                            [tuple(i) for i in dataset[trainer.groupby_column].to_numpy()]):
+
+            if id in bad_ids:
+
+                residual_inds.append(index)
+
+        dataset = dataset.iloc[residual_inds][trainer.groupby_column + ['query', 'target', 'score']]
+    
+        return dataset
+
+    def fit(self, dataset):
+
+        #fit and update train performance for each round of residuals
+        for trainer in self.tunaSim_trainers:
+
+            #fit on remaining train data
+            trainer.fit(dataset)
+
+            #downsample from train before fitting next model
+            dataset = self.residual_downsample_tunasims(dataset, trainer)
+
+            #check that we have two classes left
+            remaining_labels = list(set(dataset['score']))
+            if len(remaining_labels) == 1:
+
+                self.missing_label = not remaining_labels[0]
+
+                break
+
+    def predict(self, dataset):
+        """ 
+        generate predictions on full datasets
+        """
+
+        groupby_column = self.tunaSim_trainers[0].groupby_column
+        
+        #collect preds by model by dataset
+        preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.function.predict_for_dataset(dataset)
+                                                                    for trainer in self.trainers))
+        
+        #convert to dictionary
+        preds = {name: pred_array for name, pred_array in zip([i.name for i in self.trainers], preds)}
+
+        #write out dataset from collected preds
+        preds = pd.DataFrame(preds)
+        preds[groupby_column] = dataset[groupby_column]
+
+        if 'score' in dataset.columns:
+            preds['score'] = dataset['score']
+
+        return preds.groupby(groupby_column).max()
+    

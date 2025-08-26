@@ -3,6 +3,7 @@ from logging import getLogger, basicConfig
 from importlib.util import spec_from_file_location, module_from_spec
 from datasetBuilder import trainSetBuilder
 from networks import IdentityMatchNetwork
+import layers
 from sys import argv
 import shutil
 from os import makedirs
@@ -44,17 +45,27 @@ def main(config_path):
 
         logger.info('finished dataset creation')
 
-    #fit network
+    #create layer objects
+    tunasim_layer = layers.tunaSimLayer(trainers = config.tunaSim_trainers,
+                                     residual_downsample_percentile = config.residual_downsample_percentile,
+                                     inference_jobs = config.inference_jobs)
+    
+    ensemble_layer = layers.ensembleLayer(candidates = config.ensemble_candidates,
+                                          selection_method = config.selection_method)
+    
+    query_adjustment_layer = layers.groupAdjustmentLayer(candidates = config.query_adjustment_candidates,
+                                                         selection_method = config.selection_method,
+                                                         groupby_column = 'queryID')
+
+    #create network
     network = IdentityMatchNetwork(train_path = f'{config.match_directory}/matched/train.pkl',
                                    val_1_path = f'{config.match_directory}/matched/val_1.pkl',
                                    val_2_path = f'{config.match_directory}/matched/val_2.pkl',
                                    test_path = f'{config.match_directory}/matched/test.pkl',
-                                   tunaSim_trainers = config.tunaSim_trainers,
-                                   intermediate_outputs_path = config.intermediate_outputs_path,
-                                   tunaSim_aggregation_candidates = config.tunaSim_aggregation_candidates,
-                                   query_adjustment_candidates = config.query_adjustment_candidates,
-                                   residual_downsampling_percentile = config.residual_downsampling_percentile,
-                                   model_selection_method = config.model_selection_method)
+                                   intermediate_outputs_path = f'{config.match_directory}/intermediate_outputs',
+                                   tunaSim_layer = tunasim_layer,
+                                   ensemble_layer = ensemble_layer,
+                                   query_adjustment_layer = query_adjustment_layer)
     
     try:
         network.fit()

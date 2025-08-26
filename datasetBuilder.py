@@ -189,21 +189,26 @@ class trainSetBuilder:
         target_neg = target_neg[['queryID', 'spectrum', self.identity_column]]
         target_pos = target_pos[['queryID', 'spectrum', self.identity_column]]
 
-        for i in range(len(query_df)):
-
-            row = query_df.iloc[i]
+        rows = zip([i for i in range(len(query_df))],
+                   query_df['mode'],
+                   query_df['queryID'],
+                    query_df['precursor'], 
+                    query_df['spectrum'],
+                    query_df[self.identity_column])
+        
+        for i, precursor, mode, queryID, spectrum, identity in rows:
 
             seen_ += 1
-            query_identities_set.add(row[self.identity_column])
+            query_identities_set.add(identity)
 
-            dif = ppm(row["precursor"], self.ppm_match_window)
+            dif = ppm(precursor, self.ppm_match_window)
                 
             #get precursor boundaries and their corresponding indices
-            upper = row["precursor"] + dif
-            lower = row["precursor"] - dif
+            upper = precursor + dif
+            lower = precursor - dif
 
             #search against pos precursors if pos mode
-            if row['mode'] == '+':
+            if mode == '+':
                 lower_ind = bisect.bisect_right(precursors_pos, lower)
                 upper_ind = bisect.bisect_left(precursors_pos,upper)
                 within_range = target_pos.iloc[lower_ind:upper_ind]
@@ -214,7 +219,7 @@ class trainSetBuilder:
                 within_range = target_neg.iloc[lower_ind:upper_ind]
 
             #always exclude self match
-            within_range = within_range[within_range['queryID'] != query_df.iloc[i]["queryID"]]
+            within_range = within_range[within_range['queryID'] != queryID]
 
             #catch case where there are no precursor matches
             if within_range.shape[0] == 0:
@@ -228,7 +233,7 @@ class trainSetBuilder:
             targets = list()
             for target in within_range['spectrum']:
 
-                matched = match_spectrum(row['spectrum'],
+                matched = match_spectrum(spectrum,
                                         target, 
                                         ms2_da = self.ms2_da, 
                                         ms2_ppm = self.ms2_ppm)
@@ -239,8 +244,8 @@ class trainSetBuilder:
             within_range['query'] = queries 
             within_range['target'] = targets
 
-            within_range["score"] = row[self.identity_column] == within_range[self.identity_column]
-            within_range['queryID'] = row["queryID"]
+            within_range["score"] = identity == within_range[self.identity_column]
+            within_range['queryID'] = queryID
 
             pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'score']])
 
