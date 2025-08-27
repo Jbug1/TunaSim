@@ -30,8 +30,6 @@ class IdentityMatchNetwork:
         self.query_adjustment_layer = query_adjustment_layer
 
         makedirs(self.intermediate_outputs_path, exist_ok = True)
-        makedirs(f'{self.intermediate_outputs_path}/pickled_objects', exist_ok = True)
-        makedirs(f'{self.intermediate_outputs_path}/performance', exist_ok = True)
         
         self.log = getLogger(__name__)
 
@@ -48,15 +46,15 @@ class IdentityMatchNetwork:
 
         #create tunasim preds
         self.log.info('creating tunasim predictions train')
-        train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path))
+        train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path)['query','target'])
         train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv')
 
         self.log.info('creating tunasim predicitons val_1')
-        val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
+        val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path)['query','target'])
         val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv')
 
         self.log.info('creating tunasim predictions val_2')
-        val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
+        val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path)['query','target'])
         val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv')
 
         #select a tunasim aggregator from among candidates

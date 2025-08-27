@@ -244,11 +244,13 @@ class tunaSimLayer:
     def __init__(self,
                  trainers,
                  residual_downsample_percentile,
-                 inference_jobs = 1):
+                 inference_jobs = 1,
+                 inference_chunk_size = 1e6):
         
         self.trainers = trainers
         self.residual_downsample_percentile = residual_downsample_percentile
         self.inference_jobs = inference_jobs
+        self.inference_chunk_size = inference_chunk_size
         self.percent_pos_before_downsample = list()
         
     def residual_downsample_tunasims(self, dataset, trainer):
@@ -325,17 +327,29 @@ class tunaSimLayer:
 
         #to miinimize params, we will infer the groupby column from trainers
         groupby_column = self.trainers[0].groupby_column
-        
-        #collect preds by model by dataset
-        preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.function.predict_for_dataset)(dataset)
-                                                                    for trainer in self.trainers)
-        
-        #convert to dictionary
-        preds = {name: pred_array for name, pred_array in zip([i.name for i in self.trainers], preds)}
+        groupby_column_values = dataset[groupby_column].to_numpy()
 
-        #write out dataset from collected preds
-        preds = pd.DataFrame(preds)
-        preds[groupby_column] = dataset[groupby_column]
+        #for memory management purposes, break dataset into smaller chunks
+        n_chunks = dataset.size[0] // self.chunk_size
+        chunk_inds = list(range(n_chunks)) + [None]
+        score_outputs = list()
+        for i in range(n_chunks - 1):
+
+            start_ind, end_ind = chunk_inds[i], chunk_inds[i + 1]
+        
+            #collect preds by model by dataset
+            preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.function.predict_for_dataset)
+                                                           (dataset.iloc[start_ind:end_ind][['query', 'target']])
+                                                            for trainer in self.trainers)
+            
+            #convert to dictionary
+            preds = {name: pred_array for name, pred_array in zip([i.name for i in self.trainers], preds)}
+
+            #keep prediction subset
+            score_outputs.append(pd.DataFrame(preds))
+
+        preds = pd.concat(score_outputs, axis = 0)
+        preds[groupby_column] = groupby_column_values
 
         if 'score' in dataset.columns:
             preds['score'] = dataset['score']

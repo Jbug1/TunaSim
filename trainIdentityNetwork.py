@@ -48,7 +48,8 @@ def main(config_path):
     #create layer objects
     tunasim_layer = layers.tunaSimLayer(trainers = config.tunaSim_trainers,
                                      residual_downsample_percentile = config.residual_downsample_percentile,
-                                     inference_jobs = config.inference_jobs)
+                                     inference_jobs = config.inference_jobs,
+                                     inference_chunk_size = config.inference_chunk_size)
     
     ensemble_layer = layers.ensembleLayer(candidates = config.ensemble_candidates,
                                           selection_method = config.selection_method)
@@ -76,7 +77,7 @@ def main(config_path):
 
     finally:
 
-        with open(f'{config.intermediate_outputs_path}/pickled_objects/network.pkl', 'wb') as handle:
+        with open(f'{config.intermediate_outputs_path}/network.pkl', 'wb') as handle:
 
             dump(network, handle)
 
