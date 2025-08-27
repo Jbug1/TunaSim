@@ -35,17 +35,16 @@ class funcTrainer:
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            learning_rates: List[float] = 0.01,
+            learning_rate: float = 0.01,
             max_iter: int = 1e5,
-            bounds: dict = None,
+            bounds: list = None,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
             ad_int: float = 0.8,
             ad_slope: float  = 0.3,
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
-            balance_column: str = None,
-            fixed: set = set()
+            balance_column: str = None
     ):
         
         self.name = name
@@ -53,7 +52,7 @@ class funcTrainer:
         self.bounds = bounds
         self.max_iter = int(max_iter)
         self.n_iter = 0
-        self.learning_rates = learning_rates
+        self.learning_rate = learning_rate
         self.learning_rate_scheduler = learning_rate_scheduler
         self.learning_beta = learning_beta
         self.ad_int = ad_int
@@ -61,15 +60,12 @@ class funcTrainer:
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
         self.balance_column = balance_column
-        self.fixed = fixed
 
         self.balance_flag = 0
 
         self.log = getLogger(__name__)
 
         self.input_lengths = list()
-
-        #self.bounds = [self.bounds[key] for key in self.function.grad_names]
 
         #set scheduling dictionaries
         self.accumulated_gradients = {key: 0 for key in self.init_vals}
@@ -237,31 +233,22 @@ class funcTrainer:
             self.learning_rates[param] = self.learning_rates[param] * (self.ad_int + self.ad_slope * abs(self.accumulated_gradients[param]) / self.accumulated_scales[param])
             
             return max(1e-7, self.learning_rates[param])
-    
 
     def step(self, score, pred_val):
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = square_loss_grad(pred_val, score)
         
-        for key, grad, bounds, learning_rate in zip(self.function.grad_names, self.function.grad_vals, self.bounds, self.learning_rates):
-
-            if key in self.fixed:
-                continue
+        for key, grad, bounds in zip(self.function.grad_names, self.function.grad_vals, self.bounds):
 
             #chain rule to get gradient w.r.t loss func
             #use np.dot in order to accomodate vector and float vals
-            step = grad * loss_grad * learning_rate
-
-            #print(key, loss_grad, grad, step)
+            step = grad * loss_grad * self.learning_rate
 
             updated = getattr(self.function, key) - step
 
-            #set updated value given constraints
+            #set updated value given constraints1
             setattr(self.function, key, min(max(bounds[0], updated), bounds[1]))
-
-            if np.isnan(updated):
-                raise ValueError(f'updated value is Nan for {key, grad}')
 
 
 class tunaSimTrainer(funcTrainer):
@@ -270,7 +257,7 @@ class tunaSimTrainer(funcTrainer):
             name: str,
             init_vals: dict,
             fixed_vals: dict = None,
-            learning_rates: List[float] = 0.01,
+            learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds: dict = None,
             learning_rate_scheduler: str = None,
@@ -281,13 +268,13 @@ class tunaSimTrainer(funcTrainer):
             groupby_column: str = None,
             balance_column: str = None):
         
-        self.function = TunaSims.tunaSim
+        self.function = tunas.tunaSim
         
         super().__init__(
             name = name,
             init_vals = init_vals,
             fixed_vals = fixed_vals,
-            learning_rates = learning_rates,
+            learning_rate = learning_rate,
             max_iter = max_iter,
             bounds = bounds,
             learning_rate_scheduler = learning_rate_scheduler,
@@ -298,6 +285,8 @@ class tunaSimTrainer(funcTrainer):
             groupby_column = groupby_column,
             balance_column = balance_column
         )
+
+        self.bounds = [bounds[key] for key in self.init_vals]
 
     def get_match_grad_components(self, sub_df):
 
@@ -315,6 +304,7 @@ class tunaSimTrainer(funcTrainer):
         return sub_df.iloc[best_match_index]['score'], self.function.predict(sub_df.iloc[best_match_index]['query'], 
                                                                           sub_df.iloc[best_match_index]['target'],
                                                                           grads = True)       
+
 
 class tunaQueryTrainer(funcTrainer):
 
@@ -353,17 +343,17 @@ class tunaQueryTrainer(funcTrainer):
             groupby_column = groupby_column,
             balance_column = balance_column,
             fixed = fixed) 
-        
-        self.bounds = [bounds[key] for key in self.init_vals]
-        self.learning_rates = [self.learning_rates for _ in self.bounds]
 
     def get_match_grad_components(self, sub_df):
         """ 
         match the format of get match grad for similarities
         """
         
-        label = np.array(sub_df['score'] == True).astype(np.int64)[0] #we only want the label of the top hit
+        #we only want the label of the top hit
+        label = np.array(sub_df['score'] == True).astype(np.int64)[0] 
 
-        preds = np.array(sub_df['preds'], dtype = np.float64) #keep all scores to move top based on shape
+        #keep all scores to move top based on shape
+        preds = np.array(sub_df['preds'], dtype = np.float64) 
 
-        return label, self.function.predict(preds, grads = True)[0] #top hit only for now
+        #top hit only for now
+        return label, self.function.predict(preds, grads = True)[0] 

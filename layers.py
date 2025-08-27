@@ -4,7 +4,6 @@ from typing import List
 from numba import njit, typed, types
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
 from joblib import Parallel, delayed
 
 class ensembleLayer:
@@ -217,8 +216,8 @@ class groupAdjustmentLayer:
     
     @staticmethod
     @njit
-    def apply_adjustments(groups: NDArray[str],
-                          preds: NDArray[np.float64],
+    def apply_adjustments(groups: list,
+                          preds: list,
                           adjustment_dict: dict):
         
         """
@@ -303,7 +302,7 @@ class tunaSimLayer:
     def fit(self, dataset):
 
         #fit and update train performance for each round of residuals
-        for trainer in self.tunaSim_trainers:
+        for trainer in self.trainers:
 
             #fit on remaining train data
             trainer.fit(dataset)
@@ -324,11 +323,12 @@ class tunaSimLayer:
         generate predictions on full datasets
         """
 
-        groupby_column = self.tunaSim_trainers[0].groupby_column
+        #to miinimize params, we will infer the groupby column from trainers
+        groupby_column = self.trainers[0].groupby_column
         
         #collect preds by model by dataset
-        preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.function.predict_for_dataset(dataset)
-                                                                    for trainer in self.trainers))
+        preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.function.predict_for_dataset)(dataset)
+                                                                    for trainer in self.trainers)
         
         #convert to dictionary
         preds = {name: pred_array for name, pred_array in zip([i.name for i in self.trainers], preds)}

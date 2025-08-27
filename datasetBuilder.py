@@ -6,8 +6,6 @@ import numpy as np
 import os
 import time
 import bisect
-from pathlib import Path
-from dataclasses import dataclass
 from logging import getLogger
 
 def ppm(base, ppm):
@@ -17,7 +15,6 @@ def ppm(base, ppm):
 
     return base * (ppm / 1e6)
 
-@dataclass
 class trainSetBuilder:
 
     def __init__(self,
@@ -190,9 +187,9 @@ class trainSetBuilder:
         target_pos = target_pos[['queryID', 'spectrum', self.identity_column]]
 
         rows = zip([i for i in range(len(query_df))],
+                   query_df['precursor'], 
                    query_df['mode'],
                    query_df['queryID'],
-                    query_df['precursor'], 
                     query_df['spectrum'],
                     query_df[self.identity_column])
         

@@ -1,11 +1,7 @@
 import pandas as pd
-from numpy import percentile, argmax
 from logging import getLogger
-from sklearn.metrics import roc_auc_score
 import time
 from os import makedirs
-from pickle import dump
-from layers import ensembleLayer, groupAdjustmentLayer, tunaLayer
 
 class IdentityMatchNetwork:
     """ 
@@ -19,9 +15,9 @@ class IdentityMatchNetwork:
                  val_2_path: str,
                  test_path: str,
                  intermediate_outputs_path: str,
-                 tunaSim_layer: tunaLayer,
-                 ensemble_layer: ensembleLayer,
-                 query_adjustment_layer: groupAdjustmentLayer
+                 tunaSim_layer,
+                 ensemble_layer,
+                 query_adjustment_layer
                  ):
         
         self.train_path = train_path
