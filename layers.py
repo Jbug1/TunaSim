@@ -330,8 +330,8 @@ class tunaSimLayer:
         groupby_column_values = dataset[groupby_column].to_numpy()
 
         #for memory management purposes, break dataset into smaller chunks
-        n_chunks = dataset.size[0] // self.chunk_size
-        chunk_inds = list(range(n_chunks)) + [None]
+        n_chunks = dataset.shape[0] // int(self.inference_chunk_size)
+        chunk_inds = [i * self.inference_chunk_size for i in range(n_chunks)] + [None]
         score_outputs = list()
         for i in range(n_chunks - 1):
 

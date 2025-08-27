@@ -33,7 +33,7 @@ def main(config_path):
                                         dataset_max_sizes = config.dataset_max_sizes,
                                         dataset_names = config.dataset_names,
                                         identity_column = config.identity_column,
-                                        outputs_directory = config.match_directory,
+                                        outputs_directory = config.results_directory,
                                         ppm_match_window = config.ppm_match_window,
                                         ms2_da = config.ms2_da,
                                         ms2_ppm = config.ms2_ppm
@@ -59,11 +59,11 @@ def main(config_path):
                                                          groupby_column = 'queryID')
 
     #create network
-    network = IdentityMatchNetwork(train_path = f'{config.match_directory}/matched/train.pkl',
-                                   val_1_path = f'{config.match_directory}/matched/val_1.pkl',
-                                   val_2_path = f'{config.match_directory}/matched/val_2.pkl',
-                                   test_path = f'{config.match_directory}/matched/test.pkl',
-                                   intermediate_outputs_path = f'{config.match_directory}/intermediate_outputs',
+    network = IdentityMatchNetwork(train_path = f'{config.results_directory}/matched/train.pkl',
+                                   val_1_path = f'{config.results_directory}/matched/val_1.pkl',
+                                   val_2_path = f'{config.results_directory}/matched/val_2.pkl',
+                                   test_path = f'{config.results_directory}/matched/test.pkl',
+                                   intermediate_outputs_path = f'{config.results_directory}/intermediate_outputs',
                                    tunaSim_layer = tunasim_layer,
                                    ensemble_layer = ensemble_layer,
                                    query_adjustment_layer = query_adjustment_layer)
@@ -77,7 +77,7 @@ def main(config_path):
 
     finally:
 
-        with open(f'{config.intermediate_outputs_path}/network.pkl', 'wb') as handle:
+        with open(f'{config.results_directory}/network.pkl', 'wb') as handle:
 
             dump(network, handle)
 

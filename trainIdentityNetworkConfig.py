@@ -6,14 +6,14 @@ from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
 
 #datasetBuilder params
-build_datasets = True
+build_datasets = False
 dataset_names = ['train', 'val_1', 'val_2', 'test']
 dataset_max_sizes = [1e7, 5e6, 5e6, 1e7]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 ppm_match_window = 10
 identity_column = 'inchi_base'
-match_directory = '/Users/jonahpoczobutt/projects/TunaRes/updated_results'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/updated_results'
 ms2_da = 0.05
 ms2_ppm = None
 
@@ -47,7 +47,7 @@ residual_downsample_percentile = 50
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001
-intermediate_outputs_path = f'{match_directory}/intermediate_outputs'
+intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 2
 inference_chunk_size = 1e6
 
