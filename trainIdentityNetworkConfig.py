@@ -8,7 +8,7 @@ log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
 #datasetBuilder params
 build_datasets = False
 dataset_names = ['train', 'val_1', 'val_2', 'test']
-dataset_max_sizes = [1e7, 5e6, 5e6, 1e7]
+dataset_max_sizes = [1e4, 5e3, 5e3, 1e3]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 ppm_match_window = 10
@@ -41,15 +41,15 @@ init_vals = {
     'query_intensity_b': 0.1,
     }
 
-n_tunasims_final = 10
-tunasims_n_iter = 3e5
+n_tunasims_final = 2
+tunasims_n_iter = 1e4
 residual_downsample_percentile = 50
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 2
-inference_chunk_size = 1e6
+inference_chunk_size = 1e3
 
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):
@@ -102,16 +102,3 @@ for i in learning_rates:
                                                             max_iter = j,
                                                             max_leaf_nodes = k,
                                                             l2_regularization = l))
-
-
-
-
-
-
-    
-
-
-
-
-
-

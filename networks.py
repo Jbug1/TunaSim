@@ -59,8 +59,8 @@ class IdentityMatchNetwork:
 
         #select a tunasim aggregator from among candidates
         self.log.info('beginning ensemble layer')
-        self.tunasim_aggregator = self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv').iloc[:,2:], 
-                                                                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv').iloc[:,2:])
+        self.tunasim_aggregator = self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'), 
+                                                                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
         
         #create train aggregated preds
         self.log.info('beginning train aggregated predictions')

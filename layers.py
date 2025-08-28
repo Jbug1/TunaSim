@@ -1,6 +1,5 @@
 from sklearn.metrics import roc_auc_score
 from typing import List
-#from scipy.stats import entropy
 from numba import njit, typed, types
 import numpy as np
 import pandas as pd
@@ -19,7 +18,16 @@ class ensembleLayer:
 
     def predict(self, data):
 
-        return self.final_model.predict_proba(data)[:,1]
+        #get scores only
+        pred_data = data[[i for i in data.columns if 'tuna' in i.lower()]]
+
+        #get other columns
+        data = data[[i for i in data.columns if 'tuna' not in i.lower()]]
+
+        #add predictions to other values
+        data['preds'] = self.final_model.predict_proba(pred_data)[:,1]
+
+        return data
     
 
     def fit(self, train, val):
@@ -30,6 +38,15 @@ class ensembleLayer:
 
         self.train_performance = list()
         self.val_performance = list()
+
+        train_score = train['score'].to_numpy()
+        val_score = val['score'].to_numpy()
+
+        train = train[[i for i in train.columns if 'tuna' in i.lower()]]
+        val = val[[i for i in val.columns if 'tuna' in i.lower()]]
+
+        train['score'] = train_score
+        val['score'] = val_score
 
         for model in self.candidates:
 
@@ -118,17 +135,15 @@ class groupAdjustmentLayer:
                 single_hit_ids.add(id)
 
         multi_hit_indices = list()
-        single_hit_indices = list()
         
         for i, id in enumerate(data[self.groupby_column].to_numpy()):
 
             if id in multi_hit_ids:
                 multi_hit_indices.append(i)
 
-            else:
-                single_hit_indices.append(i)
-
         multi_hit = data.iloc[multi_hit_indices]
+
+        grouped = multi_hit.groupby
         
         #get dif from top and score entropy by groupBy column group
         groupvar_input = [group[1].to_numpy() for group in grouped['preds']]
@@ -172,7 +187,6 @@ class groupAdjustmentLayer:
             entropy[i] = -np.sum(np.log(preds) * preds)
 
         return top_from_next, entropy
-    
 
     def fit(self, train, val):
         """ 
@@ -185,8 +199,9 @@ class groupAdjustmentLayer:
         train_ = self.process_input_data(train)
         val_ = self.process_input_data(val)
 
-        self.model_layer.fit(train_, val_)
+        print(train_.head())
 
+        self.model_layer.fit(train_, val_)
 
     def predict(self, data):
         """ 
@@ -250,7 +265,7 @@ class tunaSimLayer:
         self.trainers = trainers
         self.residual_downsample_percentile = residual_downsample_percentile
         self.inference_jobs = inference_jobs
-        self.inference_chunk_size = inference_chunk_size
+        self.inference_chunk_size = int(inference_chunk_size)
         self.percent_pos_before_downsample = list()
         
     def residual_downsample_tunasims(self, dataset, trainer):
@@ -330,8 +345,8 @@ class tunaSimLayer:
         groupby_column_values = dataset[groupby_column].to_numpy()
 
         #for memory management purposes, break dataset into smaller chunks
-        n_chunks = dataset.shape[0] // int(self.inference_chunk_size)
-        chunk_inds = [i * self.inference_chunk_size for i in range(n_chunks)] + [None]
+        n_chunks = (dataset.shape[0] // self.inference_chunk_size) + 2
+        chunk_inds = [i * self.inference_chunk_size for i in range(n_chunks)]
         score_outputs = list()
         for i in range(n_chunks - 1):
 
@@ -348,11 +363,11 @@ class tunaSimLayer:
             #keep prediction subset
             score_outputs.append(pd.DataFrame(preds))
 
-        preds = pd.concat(score_outputs, axis = 0)
+        preds = pd.concat(score_outputs, axis = 0, ignore_index = True)
         preds[groupby_column] = groupby_column_values
 
         if 'score' in dataset.columns:
-            preds['score'] = dataset['score']
+            preds['score'] = dataset['score'].to_numpy()
 
         return preds.groupby(groupby_column).max()
     
