@@ -62,7 +62,6 @@ def main(config_path):
     network = IdentityMatchNetwork(train_path = f'{config.results_directory}/matched/train.pkl',
                                    val_1_path = f'{config.results_directory}/matched/val_1.pkl',
                                    val_2_path = f'{config.results_directory}/matched/val_2.pkl',
-                                   test_path = f'{config.results_directory}/matched/test.pkl',
                                    intermediate_outputs_path = f'{config.results_directory}/intermediate_outputs',
                                    tunaSim_layer = tunasim_layer,
                                    ensemble_layer = ensemble_layer,

@@ -6,9 +6,9 @@ from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
 
 #datasetBuilder params
-build_datasets = False
+build_datasets = True
 dataset_names = ['train', 'val_1', 'val_2', 'test']
-dataset_max_sizes = [1e4, 5e3, 5e3, 1e3]
+dataset_max_sizes = [1e7, 5e6, 5e6, 1e7]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_full.pkl'
 ppm_match_window = 10

@@ -13,7 +13,6 @@ class IdentityMatchNetwork:
                  train_path: str,
                  val_1_path: str,
                  val_2_path: str,
-                 test_path: str,
                  intermediate_outputs_path: str,
                  tunaSim_layer,
                  ensemble_layer,
@@ -23,7 +22,6 @@ class IdentityMatchNetwork:
         self.train_path = train_path
         self.val_1_path = val_1_path
         self.val_2_path = val_2_path
-        self.test_path = test_path
         self.intermediate_outputs_path = intermediate_outputs_path
         self.tunaSim_layer = tunaSim_layer
         self.ensemble_layer = ensemble_layer
@@ -47,15 +45,15 @@ class IdentityMatchNetwork:
         #create tunasim preds
         self.log.info('creating tunasim predictions train')
         train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path))
-        train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv')
+        train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv', index = False)
 
         self.log.info('creating tunasim predicitons val_1')
         val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
-        val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv')
+        val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv', index = False)
 
         self.log.info('creating tunasim predictions val_2')
         val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
-        val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv')
+        val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
 
         #select a tunasim aggregator from among candidates
         self.log.info('beginning ensemble layer')
@@ -65,24 +63,24 @@ class IdentityMatchNetwork:
         #create train aggregated preds
         self.log.info('beginning train aggregated predictions')
         train_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'))
-        train_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv')
+        train_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv', index = False)
         
         #create val 1 aggregated preds
         self.log.info('beginning train consolidated predictions')
         val_1_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
-        val_1_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv')
+        val_1_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv', index = False)
 
         #create val 2 aggregated preds
         self.log.info('beginning train aggregated predictions')
         val_2_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv'))
-        val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv')
+        val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv', index = False)
 
         #fit group adjustment layer
         #train dataset now includes the first validation dataset
         self.log.info('beginning query adjustment')
         self.query_adjustment_layer.fit(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
-                                                pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv')]),
-                                  val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'))
+                                                pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv')]),
+                                        val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
 
 
         self.log.info(f'network training complete in {round((time.time() - overall_start) / 60), 4} minutes')
