@@ -214,8 +214,8 @@ class groupAdjustmentLayer:
 
         #build adjustment dictionary
         #this dictionary contains the estimated probability of top hit being correct
-        #numba friendly
-        adjustment_dict = typed.Dict.empty(
+        #numba friendly, also want to retain this dict as part of network
+        self.adjustment_dict = typed.Dict.empty(
             key_type = types.int64,
             value_type = types.float64,
         )
@@ -223,11 +223,14 @@ class groupAdjustmentLayer:
         #populate dictionary
         for id, pred in zip(multi_hits[self.groupby_column].to_numpy(), self.model_layer.predict(multi_hits)):
 
-            adjustment_dict[id] = pred
+            self.adjustment_dict[id] = pred
 
-        return groupAdjustmentLayer.apply_adjustments(data[self.groupby_column].to_numpy(),
+        adjusted = groupAdjustmentLayer.apply_adjustments(data[self.groupby_column].to_numpy(),
                                                       data['preds'].to_numpy(),
-                                                      adjustment_dict)
+                                                      self.adjustment_dict)
+        
+        data['preds'] = adjusted
+        return data
     
     @staticmethod
     @njit
@@ -340,7 +343,7 @@ class tunaSimLayer:
         generate predictions on full datasets
         """
 
-        #to miinimize params, we will infer the groupby column from trainers
+        #to minimize params, we will infer the groupby column from trainers
         groupby_column = self.trainers[0].groupby_column
         groupby_column_values = dataset[groupby_column].to_numpy()
 
@@ -369,5 +372,5 @@ class tunaSimLayer:
         if 'score' in dataset.columns:
             preds['score'] = dataset['score'].to_numpy()
 
-        return preds.groupby(groupby_column).max()
+        return preds.groupby(groupby_column).max().reset_index(drop = False)
     
