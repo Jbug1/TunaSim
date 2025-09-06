@@ -9,20 +9,22 @@ class ensembleLayer:
 
     def __init__(self,
                  candidates: List,
-                 selection_method: str = 'top'):
+                 selection_method: str = 'top',
+                 data_column_str: str = 'tuna'):
         
         self.candidates = candidates
         self.selection_method = selection_method
+        self.data_column_str = data_column_str
 
         #maybe add a performance metric param here
 
     def predict(self, data):
 
         #get scores only
-        pred_data = data[[i for i in data.columns if 'tuna' in i.lower()]]
+        pred_data = data[[i for i in data.columns if self.data_column_str in i.lower()]]
 
         #get other columns
-        data = data[[i for i in data.columns if 'tuna' not in i.lower()]]
+        data = data[[i for i in data.columns if self.data_column_str not in i.lower()]]
 
         #add predictions to other values
         data['preds'] = self.final_model.predict_proba(pred_data)[:,1]
@@ -42,8 +44,8 @@ class ensembleLayer:
         train_score = train['score'].to_numpy()
         val_score = val['score'].to_numpy()
 
-        train = train[[i for i in train.columns if 'tuna' in i.lower()]]
-        val = val[[i for i in val.columns if 'tuna' in i.lower()]]
+        train = train[[i for i in train.columns if self.data_column_str in i.lower()]]
+        val = val[[i for i in val.columns if self.data_column_str in i.lower()]]
 
         train['score'] = train_score
         val['score'] = val_score
@@ -85,14 +87,17 @@ class groupAdjustmentLayer:
     def __init__(self,
                  candidates: List = None,
                  selection_method: str = 'top',
-                 groupby_column: str = 'queryID'):
+                 groupby_column: list = ['queryID'],
+                 data_column_str: str = 'attribute'):
         
         self.candidates = candidates
         self.selection_method = selection_method
         self.groupby_column = groupby_column
+        self.data_column_str = data_column_str
         
         self.model_layer = ensembleLayer(candidates = candidates,
-                                      selection_method = selection_method)
+                                         selection_method = selection_method,
+                                         data_column_str = data_column_str)
         
         
     @property
@@ -136,14 +141,17 @@ class groupAdjustmentLayer:
 
         multi_hit_indices = list()
         
-        for i, id in enumerate(data[self.groupby_column].to_numpy()):
+        for i, id in enumerate(data[self.groupby_column].to_numpy().flatten()):
 
             if id in multi_hit_ids:
                 multi_hit_indices.append(i)
 
         multi_hit = data.iloc[multi_hit_indices]
 
-        grouped = multi_hit.groupby
+        #ensure that we are sorted top to bottom match within groups
+        multi_hit.sort_values(by = self.groupby_column + ['preds'], ascending = False, inplace = True)
+
+        grouped = multi_hit.groupby(self.groupby_column)
         
         #get dif from top and score entropy by groupBy column group
         groupvar_input = [group[1].to_numpy() for group in grouped['preds']]
@@ -156,8 +164,8 @@ class groupAdjustmentLayer:
         if 'score' in multi_hit.columns:
 
             multi_df = pd.DataFrame({self.groupby_column: top_hits.index,
-                                     'top_from_next': top_from_next,
-                                     'entropy': entropy,
+                                     'attribute_top_from_next': top_from_next,
+                                     'attribute_entropy': entropy,
                                      'preds': top_hits['preds'].to_numpy(),
                                      'score': top_hits['score'].to_numpy()})
         
@@ -196,12 +204,13 @@ class groupAdjustmentLayer:
 
         #transform input to be compatible with this layer
         #don't need single hits for training
-        train_ = self.process_input_data(train)
-        val_ = self.process_input_data(val)
+        train.to_csv('train.csv', index = False)
+        train = self.process_input_data(train)
+        val = self.process_input_data(val)
 
-        print(train_.head())
+        train.to_csv('train_.csv', index = False)
 
-        self.model_layer.fit(train_, val_)
+        self.model_layer.fit(train, val)
 
     def predict(self, data):
         """ 
@@ -356,7 +365,7 @@ class tunaSimLayer:
             start_ind, end_ind = chunk_inds[i], chunk_inds[i + 1]
         
             #collect preds by model by dataset
-            preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.function.predict_for_dataset)
+            preds = Parallel(n_jobs = self.inference_jobs)(delayed(trainer.final_function.predict_for_dataset)
                                                            (dataset.iloc[start_ind:end_ind][['query', 'target']])
                                                             for trainer in self.trainers)
             

@@ -41,21 +41,23 @@ init_vals = {
     'query_intensity_b': 0.1,
     }
 
-n_tunasims_final = 10
+n_tunasims_final = 4
 tunasims_n_iter = 1e4
-residual_downsample_percentile = 50
+residual_downsample_percentile = 0
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 2
-inference_chunk_size = 1e3
+inference_chunk_size = 1e5
+n_inits = 3
 
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):
     
     tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i}',
                                 init_vals = init_vals,
+                                n_inits = n_inits,
                                 bounds = bounds,
                                 max_iter = tunasims_n_iter,
                                 learning_rate = learning_rate,
@@ -79,9 +81,9 @@ for i in learning_rates:
             for l in l2_regs:
 
                 ensemble_candidates.append(gbc(learning_rate = i,
-                                                            max_iter = j,
-                                                            max_leaf_nodes = k,
-                                                            l2_regularization = l))
+                                                max_iter = j,
+                                                max_leaf_nodes = k,
+                                                l2_regularization = l))
 
 ########################################################################
 #query adjustment layer params

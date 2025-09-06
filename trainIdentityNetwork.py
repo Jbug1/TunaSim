@@ -52,11 +52,13 @@ def main(config_path):
                                      inference_chunk_size = config.inference_chunk_size)
     
     ensemble_layer = layers.ensembleLayer(candidates = config.ensemble_candidates,
-                                          selection_method = config.selection_method)
+                                          selection_method = config.selection_method,
+                                          data_column_str = 'tuna')
     
     query_adjustment_layer = layers.groupAdjustmentLayer(candidates = config.query_adjustment_candidates,
                                                          selection_method = config.selection_method,
-                                                         groupby_column = 'queryID')
+                                                         groupby_column = ['queryID'],
+                                                         data_column_str = 'attribute')
 
     #create network
     network = IdentityMatchNetwork(train_path = f'{config.results_directory}/matched/train.pkl',

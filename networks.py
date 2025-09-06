@@ -51,6 +51,7 @@ class IdentityMatchNetwork:
         val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
         val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv', index = False)
 
+        print(yool)
         self.log.info('creating tunasim predictions val_2')
         val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
         val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
@@ -83,7 +84,7 @@ class IdentityMatchNetwork:
                                         val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
 
 
-        self.log.info(f'network training complete in {round((time.time() - overall_start) / 60), 4} minutes')
+        self.log.info(f'network training complete in {round((time.time() - overall_start) / 60, 4)} minutes')
 
 
     def predict(self, dataset, write_intermediates = False):

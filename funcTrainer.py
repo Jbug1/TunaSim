@@ -6,6 +6,7 @@ from collections import deque
 import time
 from logging import getLogger
 from numba import njit
+from sklearn.metrics import roc_auc_score
 
 @njit
 def square_loss_grad(x, y):
@@ -34,6 +35,7 @@ class funcTrainer:
             self,
             name: str,
             init_vals: dict,
+            n_inits: int = 1,
             fixed_vals: dict = None,
             learning_rate: float = 0.01,
             max_iter: int = 1e5,
@@ -49,6 +51,7 @@ class funcTrainer:
         
         self.name = name
         self.init_vals = init_vals
+        self.n_inits = n_inits
         self.bounds = bounds
         self.max_iter = int(max_iter)
         self.n_iter = 0
@@ -86,13 +89,46 @@ class funcTrainer:
     
     def fit(self, train_data):
 
-        start = time.time()
+        total_start = time.time()
         self.build_inds_dict(train_data)
         self.log.info(f'created inds dict in {round((time.time() - start) / 60,4)} minutes')
 
-        start = time.time()
-        self.stoch_descent(train_data)
-        self.log.info(f'trained function in {round((time.time() - start) / 60,4)} minutes')
+        self.performance_by_initialization = list()
+        self.best_auc = 0
+        self.initializations = list()
+        for _ in range(self.n_inits):
+
+            self.initializations.append(copy.deepcopy(self.init_vals))
+
+            start = time.time()
+
+            #start with the first init vals that are passed
+            self.stoch_descent(train_data)
+
+            #if we are trying more than 1, we want to update init vals with random initialization
+            self.init_vals =  {key: np.random.uniform(self.bounds[i][0], self.bounds[i][1]) 
+                               for i, key 
+                               in list(enumerate(self.init_vals.keys()))}
+            
+            #add predictions and group by user provided columns
+            train_data['preds'] = self.function.predict_for_dataset(train_data)
+            tops = train_data.sort_values(by = self.groupby_column + ['preds'], ascending = False)
+            tops = tops.groupby(self.groupby_column).first()
+
+            #get the auc on train data for this trained function
+            init_auc = roc_auc_score(tops['score'], tops['preds'])
+            self.performance_by_initialization.append(init_auc)
+
+            #if this is the best performer so far, retain it
+            if init_auc > self.best_auc:
+
+                self.best_auc = init_auc
+                self.final_function = copy.deepcopy(self.function)
+                
+            
+            self.log.info(f'trained function {_} in {round((time.time() - start) / 60,4)} minutes')
+
+        self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes')
         
 
     def build_inds_dict(self,
@@ -256,6 +292,7 @@ class tunaSimTrainer(funcTrainer):
     def __init__(self,
             name: str,
             init_vals: dict,
+            n_inits: int = 1,
             fixed_vals: dict = None,
             learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
@@ -273,6 +310,7 @@ class tunaSimTrainer(funcTrainer):
         super().__init__(
             name = name,
             init_vals = init_vals,
+            n_inits = n_inits,
             fixed_vals = fixed_vals,
             learning_rate = learning_rate,
             max_iter = max_iter,
