@@ -96,6 +96,7 @@ class funcTrainer:
         self.performance_by_initialization = list()
         self.best_auc = 0
         self.initializations = list()
+        self.trained_funcs = list()
         for _ in range(self.n_inits):
 
             self.initializations.append(copy.deepcopy(self.init_vals))
@@ -104,6 +105,9 @@ class funcTrainer:
 
             #start with the first init vals that are passed
             self.stoch_descent(train_data)
+
+            #add the trained function to collector for future inspection
+            self.trained_funcs.append(copy.deepcopy(self.function))
 
             #if we are trying more than 1, we want to update init vals with random initialization
             self.init_vals =  {key: np.random.uniform(self.bounds[i][0], self.bounds[i][1]) 
