@@ -91,7 +91,7 @@ class funcTrainer:
 
         total_start = time.time()
         self.build_inds_dict(train_data)
-        self.log.info(f'created inds dict in {round((time.time() - start) / 60,4)} minutes')
+        self.log.info(f'created inds dict in {round((time.time() - total_start) / 60,4)} minutes')
 
         self.performance_by_initialization = list()
         self.best_auc = 0

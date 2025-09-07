@@ -163,8 +163,8 @@ class groupAdjustmentLayer:
         #if score is present, then we are in training mode
         if 'score' in multi_hit.columns:
 
-            multi_df = pd.DataFrame({self.groupby_column: top_hits.index,
-                                     'attribute_top_from_next': top_from_next,
+            multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
+                                     #'attribute_top_from_next': top_from_next,
                                      'attribute_entropy': entropy,
                                      'preds': top_hits['preds'].to_numpy(),
                                      'score': top_hits['score'].to_numpy()})
@@ -172,8 +172,8 @@ class groupAdjustmentLayer:
         #otherwise we are in inference mode
         else:
 
-            multi_df = pd.DataFrame({self.groupby_column: top_hits.index,
-                                     'top_from_next': top_from_next, 
+            multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
+                                     #'top_from_next': top_from_next, 
                                      'entropy': entropy,
                                      'preds' : top_hits['preds']})
 
