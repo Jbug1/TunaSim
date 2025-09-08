@@ -89,6 +89,7 @@ class funcTrainer:
     
     def fit(self, train_data):
 
+        self.logger.info(f'beginning training {self.name}')
         total_start = time.time()
         self.build_inds_dict(train_data)
         self.log.info(f'created inds dict in {round((time.time() - total_start) / 60,4)} minutes')
@@ -133,6 +134,14 @@ class funcTrainer:
             self.log.info(f'trained function {_} in {round((time.time() - start) / 60,4)} minutes')
 
         self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes')
+
+    def final_function(self, x, y):
+        """
+        this is a placeholder until we fit
+        the actual sim func
+        """
+
+        return 0
         
 
     def build_inds_dict(self,
