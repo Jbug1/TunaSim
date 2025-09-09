@@ -1,4 +1,4 @@
-import tunas
+import build.TunaSimNetwork.tunas as tunas
 import numpy as np
 from typing import List
 import copy
@@ -63,6 +63,7 @@ class funcTrainer:
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
         self.balance_column = balance_column
+        self.trained = False
 
         self.balance_flag = 0
 
@@ -89,9 +90,11 @@ class funcTrainer:
     
     def fit(self, train_data):
 
-        self.logger.info(f'beginning training {self.name}')
+        self.log.info(f'beginning training {self.name}')
+
         total_start = time.time()
         self.build_inds_dict(train_data)
+
         self.log.info(f'created inds dict in {round((time.time() - total_start) / 60,4)} minutes')
 
         self.performance_by_initialization = list()
@@ -134,15 +137,6 @@ class funcTrainer:
             self.log.info(f'trained function {_} in {round((time.time() - start) / 60,4)} minutes')
 
         self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes')
-
-    def final_function(self, x, y):
-        """
-        this is a placeholder until we fit
-        the actual sim func
-        """
-
-        return 0
-        
 
     def build_inds_dict(self,
                         data):

@@ -1,12 +1,12 @@
 #config file to pass all parameters onto script
-from funcTrainer import tunaSimTrainer
+from build.TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
 log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
 
 #datasetBuilder params
-build_datasets = True
+build_datasets = False
 dataset_names = ['train', 'val_1', 'val_2', 'test']
 dataset_max_sizes = [1e7, 1e7, 1e7, 1e7]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_noMetlin.pkl'
@@ -41,9 +41,9 @@ init_vals = {
     'query_intensity_b': 0.1,
     }
 
-n_tunasims_final = 8
+n_tunasims_final = 16
 tunasims_n_iter = 3e5
-residual_downsample_percentile = 80
+residual_downsample_percentile = 50
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001

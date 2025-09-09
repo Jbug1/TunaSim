@@ -2,9 +2,6 @@ import numpy as np
 from numba import njit
 from scipy.stats import entropy
 
-import warnings
-warnings.filterwarnings("ignore")
-
 @njit
 def sigmoid(z):
     

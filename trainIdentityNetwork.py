@@ -1,9 +1,9 @@
 #main script to run network training
 from logging import getLogger, basicConfig
 from importlib.util import spec_from_file_location, module_from_spec
-from datasetBuilder import trainSetBuilder
-from networks import IdentityMatchNetwork
-import layers
+from TunaSimNetwork.datasetBuilder import trainSetBuilder
+from TunaSimNetwork.networks import IdentityMatchNetwork
+import TunaSimNetwork.layers as layers
 from sys import argv
 import shutil
 from os import makedirs
