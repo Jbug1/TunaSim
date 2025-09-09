@@ -1,4 +1,4 @@
-import build.TunaSimNetwork.tunas as tunas
+import tunas
 import numpy as np
 from typing import List
 import copy

@@ -1,5 +1,5 @@
 #config file to pass all parameters onto script
-from build.TunaSimNetwork.funcTrainer import tunaSimTrainer
+from TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
