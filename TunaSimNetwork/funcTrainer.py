@@ -1,4 +1,4 @@
-import tunas
+from TunaSimNetwork import tunas
 import numpy as np
 from typing import List
 import copy

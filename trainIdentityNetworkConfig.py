@@ -41,9 +41,9 @@ init_vals = {
     'query_intensity_b': 0.1,
     }
 
-n_tunasims_final = 16
+n_tunasims_final = 30
 tunasims_n_iter = 3e5
-residual_downsample_percentile = 50
+residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001
@@ -55,7 +55,7 @@ n_inits = 10
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):
     
-    tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i}',
+    tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i+1}',
                                 init_vals = init_vals,
                                 n_inits = n_inits,
                                 bounds = bounds,
