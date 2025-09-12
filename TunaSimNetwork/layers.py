@@ -155,7 +155,7 @@ class groupAdjustmentLayer:
         
         #get dif from top and score entropy by groupBy column group
         groupvar_input = [group[1].to_numpy() for group in grouped['preds']]
-        top_from_next, entropy = groupAdjustmentLayer.get_group_vars(groupvar_input)
+        top_from_next = groupAdjustmentLayer.get_top_from_next(groupvar_input)
 
         #grad top hit labels
         top_hits = grouped.first()
@@ -165,21 +165,31 @@ class groupAdjustmentLayer:
 
             multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
                                      'attribute_top_from_next': top_from_next,
-                                     'attribute_entropy': entropy,
-                                     'preds': top_hits['preds'].to_numpy(),
+                                     'attribute_preds': top_hits['preds'].to_numpy(),
                                      'score': top_hits['score'].to_numpy()})
-            
-            multi_df.to_csv('multi.csv')
         
         #otherwise we are in inference mode
         else:
 
             multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
-                                     'top_from_next': top_from_next, 
-                                     'entropy': entropy,
-                                     'preds' : top_hits['preds']})
+                                     'attribute_top_from_next': top_from_next, 
+                                     'attribute_preds' : top_hits['preds']})
 
         return multi_df
+    
+    @staticmethod
+    @njit
+    def get_top_from_next(preds_agg):
+
+        top_from_next = np.zeros(len(preds_agg))
+
+        for i, preds in enumerate(preds_agg):
+
+            top_from_next[i] = preds[0] - preds[1]
+
+            preds = preds / np.sum(preds)
+
+        return top_from_next
     
     @staticmethod
     @njit
@@ -206,13 +216,12 @@ class groupAdjustmentLayer:
 
         #transform input to be compatible with this layer
         #don't need single hits for training
-        train.to_csv('train.csv', index = False)
         train = self.process_input_data(train)
         val = self.process_input_data(val)
 
-        train.to_csv('train_.csv', index = False)
-
         self.model_layer.fit(train, val)
+
+        return train, val
 
     def predict(self, data):
         """ 

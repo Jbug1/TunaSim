@@ -78,9 +78,12 @@ class IdentityMatchNetwork:
         #fit group adjustment layer
         #train dataset now includes the first validation dataset
         self.log.info('beginning query adjustment')
-        self.query_adjustment_layer.fit(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
+        query_adjust_train, query_adjust_val = self.query_adjustment_layer.fit(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
                                                 pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv')]),
-                                        val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
+                                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
+        
+        query_adjust_train.to_csv(f'{self.intermediate_outputs_path}/query_adjust_train.csv', index = False)
+        query_adjust_val.to_csv(f'{self.intermediate_outputs_path}/query_adjust_val.csv', index = False)
 
         self.log.info(f'network training complete in {round((time.time() - overall_start) / 60, 4)} minutes')
 
