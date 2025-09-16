@@ -1,5 +1,5 @@
 #config file to pass all parameters onto script
-from build.TunaSimNetwork.funcTrainer import tunaSimTrainer
+from TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
@@ -8,26 +8,27 @@ log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
 #datasetBuilder params
 build_datasets = False
 dataset_names = ['train', 'val_1', 'val_2', 'test']
-dataset_max_sizes = [1e7, 1e7, 1e7, 1e7]
-query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_noMetlin.pkl'
-target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_noMetlin.pkl'
+dataset_max_sizes = [1e7, 1, 1, 1]
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train.pkl'
 ppm_match_window = 10
 identity_column = 'inchi_base'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/updated_results'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/updated_results_2'
 ms2_da = 0.05
 ms2_ppm = None
 
 #first tunasim parameterization funcs
-bounds = {'mult_a': (-3,3),
-          'mult_b': (1e-10, 2),
-          'dif_a':(-3,3),
-          'dif_b': (1e-10, 2),
-          'add_norm_b': (0, 2),
-          'query_intensity_a': (1e-10,2),
-          'query_intensity_b': (1e-10,2),
-          'target_intensity_a': (1e-10,2),
-          'target_intensity_b': (1e-10,2),
-          }
+bounds = {
+    'mult_a': (-3,3),
+    'mult_b': (1e-10, 2),
+    'dif_a':(-3,3),
+    'dif_b': (1e-10, 2),
+    'add_norm_b': (0, 2),
+    'query_intensity_a': (1e-10,2),
+    'query_intensity_b': (1e-10,2),
+    'target_intensity_a': (1e-10,2),
+    'target_intensity_b': (1e-10,2)
+    }
 
 init_vals = {
     'mult_a' : 0.001,
@@ -38,24 +39,24 @@ init_vals = {
     'target_intensity_a': 0.1,
     'query_intensity_a': 0.1,
     'target_intensity_b': 0.1,
-    'query_intensity_b': 0.1,
+    'query_intensity_b': 0.1
     }
 
-n_tunasims_final = 16
-tunasims_n_iter = 3e5
-residual_downsample_percentile = 50
+n_tunasims_final = 24
+tunasims_n_iter = 5e5
+residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.001
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 2
-inference_chunk_size = 1e5
+inference_chunk_size = 1e6
 n_inits = 10
 
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):
     
-    tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i}',
+    tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i+1}',
                                 init_vals = init_vals,
                                 n_inits = n_inits,
                                 bounds = bounds,

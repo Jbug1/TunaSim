@@ -1,4 +1,4 @@
-import build.TunaSimNetwork.tunas as tunas
+import TunaSimNetwork.tunas as tunas
 import numpy as np
 from typing import List
 import copy
@@ -12,9 +12,9 @@ from sklearn.metrics import roc_auc_score
 def square_loss_grad(x, y):
 
         return 2 * (x - y)
+    
 
-
-class funcTrainer:
+class tunaSimTrainer:
     ''' 
     name: what to call this func ob 
     function: tuna sim function that maps input spectra to 0-1 interval
@@ -31,24 +31,23 @@ class funcTrainer:
     lambdas: update step size
     '''
 
-    def __init__(
-            self,
+    def __init__(self,
             name: str,
             init_vals: dict,
             n_inits: int = 1,
-            fixed_vals: dict = None,
-            learning_rate: float = 0.01,
+            learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
-            bounds: list = None,
+            bounds: dict = None,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
             ad_int: float = 0.8,
             ad_slope: float  = 0.3,
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
-            balance_column: str = None
-    ):
+            balance_column: str = None):
         
+        self.function_space = tunas.tunaSim
+
         self.name = name
         self.init_vals = init_vals
         self.n_inits = n_inits
@@ -69,8 +68,6 @@ class funcTrainer:
 
         self.log = getLogger(__name__)
 
-        self.input_lengths = list()
-
         #set scheduling dictionaries
         self.accumulated_gradients = {key: 0 for key in self.init_vals}
         self.accumulated_scales = {key: 0 for key in self.init_vals}
@@ -83,11 +80,9 @@ class funcTrainer:
         self.accumulated_directions = {key: 0 for key in self.init_vals.keys()}
         
         self.init_vals = init_vals
-        self.fixed_vals = fixed_vals
-        self.function = self.function(**init_vals)
-        
-        self.trained_values = copy.deepcopy(self.init_vals)
-    
+
+        self.bounds = [bounds[key] for key in self.init_vals]
+
     def fit(self, train_data):
 
         self.log.info(f'beginning training {self.name}')
@@ -104,6 +99,9 @@ class funcTrainer:
         for _ in range(self.n_inits):
 
             self.initializations.append(copy.deepcopy(self.init_vals))
+
+            #create first function to be fit
+            self.function = self.function_space(**self.init_vals)
 
             start = time.time()
 
@@ -131,12 +129,11 @@ class funcTrainer:
             if init_auc > self.best_auc:
 
                 self.best_auc = init_auc
-                self.final_function = copy.deepcopy(self.function)
-                
+                self.final_function = copy.deepcopy(self.function)     
             
-            self.log.info(f'trained function {_} in {round((time.time() - start) / 60,4)} minutes')
+            self.log.info(f'trained function {_ + 1} in {round((time.time() - start) / 60,4)} minutes, AUC:{round(init_auc, 4)}')
 
-        self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes')
+        self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes, AUC:{round(self.best_auc, 4)}')
 
     def build_inds_dict(self,
                         data):
@@ -148,6 +145,9 @@ class funcTrainer:
             balances = np.zeros(len(data))
         else:
             balances = data[self.balance_column].tolist()
+
+            if len(set(balances)) != 2:
+                raise ValueError(f'cannot balance dataset if there are not two classes; {len(set(balances))} seen')
 
         if self.groupby_column is None:
             groups = list(range(len(data)))
@@ -217,7 +217,6 @@ class funcTrainer:
             self.ones_dict = self.zeros_dict
             self.num_1 = self.num_0
 
-
     def get_match_rows(self):
 
         #flip balance flag
@@ -238,13 +237,9 @@ class funcTrainer:
         func must take: match, query, target
         """
 
-        self.unmatched = 0
-        self.top_wrong = 0
         for _ in range(int(self.max_iter)):
 
             index = self.get_match_rows()
-
-            self.input_lengths.append(len(index))
 
             sub = train_data.iloc[index]
                                                            
@@ -293,46 +288,6 @@ class funcTrainer:
             #set updated value given constraints1
             setattr(self.function, key, min(max(bounds[0], updated), bounds[1]))
 
-
-class tunaSimTrainer(funcTrainer):
-
-    def __init__(self,
-            name: str,
-            init_vals: dict,
-            n_inits: int = 1,
-            fixed_vals: dict = None,
-            learning_rate: List[float] = 0.01,
-            max_iter: int = 1e5,
-            bounds: dict = None,
-            learning_rate_scheduler: str = None,
-            learning_beta: float = 0.5,
-            ad_int: float = 0.8,
-            ad_slope: float  = 0.3,
-            scale_holdover_vals: int = 2,
-            groupby_column: str = None,
-            balance_column: str = None):
-        
-        self.function = tunas.tunaSim
-        
-        super().__init__(
-            name = name,
-            init_vals = init_vals,
-            n_inits = n_inits,
-            fixed_vals = fixed_vals,
-            learning_rate = learning_rate,
-            max_iter = max_iter,
-            bounds = bounds,
-            learning_rate_scheduler = learning_rate_scheduler,
-            learning_beta = learning_beta,
-            ad_int = ad_int,
-            ad_slope = ad_slope,
-            scale_holdover_vals = scale_holdover_vals,
-            groupby_column = groupby_column,
-            balance_column = balance_column
-        )
-
-        self.bounds = [bounds[key] for key in self.init_vals]
-
     def get_match_grad_components(self, sub_df):
 
         #in the first round, we want to pick the index with the highest similarity scores
@@ -351,54 +306,3 @@ class tunaSimTrainer(funcTrainer):
                                                                           grads = True)       
 
 
-class tunaQueryTrainer(funcTrainer):
-
-    def __init__(
-            self,
-            name: str,
-            init_vals: dict,
-            fixed_vals: dict = None,
-            learning_rates: List[float] = 0.01,
-            max_iter: int = 1e5,
-            bounds: dict = None,
-            learning_rate_scheduler: str = None,
-            learning_beta: float = 0.5,
-            ad_int: float = 0.8,
-            ad_slope: float  = 0.3,
-            scale_holdover_vals: int = 2,
-            groupby_column: str = None,
-            balance_column: str = None,
-            identity_column: str = None,
-            fixed: set = set()):
-        
-        self.identity_column = identity_column
-        self.function = tunas.tunaTop
-
-        super().__init__(name = name,
-            init_vals = init_vals,
-            fixed_vals = fixed_vals,
-            learning_rates = learning_rates,
-            max_iter = max_iter,
-            bounds = bounds,
-            learning_rate_scheduler = learning_rate_scheduler,
-            learning_beta = learning_beta,
-            ad_int = ad_int,
-            ad_slope = ad_slope,
-            scale_holdover_vals = scale_holdover_vals,
-            groupby_column = groupby_column,
-            balance_column = balance_column,
-            fixed = fixed) 
-
-    def get_match_grad_components(self, sub_df):
-        """ 
-        match the format of get match grad for similarities
-        """
-        
-        #we only want the label of the top hit
-        label = np.array(sub_df['score'] == True).astype(np.int64)[0] 
-
-        #keep all scores to move top based on shape
-        preds = np.array(sub_df['preds'], dtype = np.float64) 
-
-        #top hit only for now
-        return label, self.function.predict(preds, grads = True)[0] 

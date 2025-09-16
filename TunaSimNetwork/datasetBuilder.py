@@ -1,12 +1,15 @@
 # conatins funcitons for importing data
 # this should include functions for reading in msps and cleaning/create sim datasets
 import pandas as pd
-from tools_fast import match_spectrum
+from TunaSimNetwork.tools_fast import match_spectrum
 import numpy as np
 import os
 import time
 import bisect
 from logging import getLogger
+
+import warnings
+warnings.filterwarnings('ignore')
 
 def ppm(base, ppm):
     """
