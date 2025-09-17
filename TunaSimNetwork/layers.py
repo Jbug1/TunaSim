@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 
+import warnings
+warnings.filterwarnings('ignore')
+
 class ensembleLayer:
 
     def __init__(self,
@@ -88,7 +91,7 @@ class groupAdjustmentLayer:
                  candidates: List = None,
                  selection_method: str = 'top',
                  groupby_column: list = ['queryID'],
-                 data_column_str: str = 'attribute'):
+                 data_column_str: str = 'top_from_next'):
         
         self.candidates = candidates
         self.selection_method = selection_method
@@ -155,29 +158,20 @@ class groupAdjustmentLayer:
         
         #get dif from top and score entropy by groupBy column group
         groupvar_input = [group[1].to_numpy() for group in grouped['preds']]
-        top_from_next, entropy = groupAdjustmentLayer.get_group_vars(groupvar_input)
+        top_from_next, top_from_next_pct, top_from_next_dif = groupAdjustmentLayer.get_group_vars(groupvar_input)
 
         #grad top hit labels
         top_hits = grouped.first()
 
-        #if score is present, then we are in training mode
-        if 'score' in multi_hit.columns:
-
-            multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
-                                     'attribute_top_from_next': top_from_next,
-                                     'attribute_entropy': entropy,
-                                     'preds': top_hits['preds'].to_numpy(),
-                                     'score': top_hits['score'].to_numpy()})
-            
-            multi_df.to_csv('multi.csv')
+        multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
+                                    'top_from_next': top_from_next,
+                                    'top_from_next_pct': top_from_next_pct,
+                                    'top_from_next_dif' : top_from_next_dif,
+                                    'preds': top_hits['preds'].to_numpy()})
         
-        #otherwise we are in inference mode
-        else:
-
-            multi_df = pd.DataFrame({'_'.join(self.groupby_column): top_hits.index,
-                                     'top_from_next': top_from_next, 
-                                     'entropy': entropy,
-                                     'preds' : top_hits['preds']})
+        #if we are in train mode, retain score
+        if 'score' in top_hits.columns:
+            multi_df['score'] = top_hits['score'].to_numpy()
 
         return multi_df
     
@@ -186,17 +180,17 @@ class groupAdjustmentLayer:
     def get_group_vars(preds_agg):
 
         top_from_next = np.zeros(len(preds_agg))
-        entropy = np.zeros(len(preds_agg))
+        top_from_next_pct = np.zeros(len(preds_agg))
+        top_from_next_dif = np.zeros(len(preds_agg))
 
         for i, preds in enumerate(preds_agg):
 
-            top_from_next[i] = preds[0] - preds[1]
+            top_from_next_ = preds[0] - preds[1]
+            top_from_next[i] = top_from_next_
+            top_from_next_pct[i] = top_from_next_ / preds[0]
+            top_from_next_dif[i] = preds[0] - top_from_next_
 
-            preds = preds / np.sum(preds)
-
-            entropy[i] = -np.sum(np.log(preds) * preds)
-
-        return top_from_next, entropy
+        return top_from_next, top_from_next_pct, top_from_next_dif
 
     def fit(self, train, val):
         """ 
@@ -206,11 +200,8 @@ class groupAdjustmentLayer:
 
         #transform input to be compatible with this layer
         #don't need single hits for training
-        train.to_csv('train.csv', index = False)
         train = self.process_input_data(train)
         val = self.process_input_data(val)
-
-        train.to_csv('train_.csv', index = False)
 
         self.model_layer.fit(train, val)
 
@@ -232,7 +223,9 @@ class groupAdjustmentLayer:
         )
 
         #populate dictionary
-        for id, pred in zip(multi_hits[self.groupby_column].to_numpy(), self.model_layer.predict(multi_hits)):
+        adjustment_preds = self.model_layer.predict(multi_hits)
+
+        for id, pred in zip(adjustment_preds[self.groupby_column].to_numpy(), adjustment_preds['preds'].to_numpy()):
 
             self.adjustment_dict[id] = pred
 

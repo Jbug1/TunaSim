@@ -6,14 +6,14 @@ from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
 
 #datasetBuilder params
-build_datasets = False
+build_datasets = True
 dataset_names = ['train', 'val_1', 'val_2', 'test']
-dataset_max_sizes = [1e7, 1, 1, 1]
+dataset_max_sizes = [1e7, 1e7, 1e7, 1e7]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train.pkl'
 ppm_match_window = 10
 identity_column = 'inchi_base'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/updated_results_2'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
 ms2_da = 0.05
 ms2_ppm = None
 
@@ -42,8 +42,8 @@ init_vals = {
     'query_intensity_b': 0.1
     }
 
-n_tunasims_final = 24
-tunasims_n_iter = 5e5
+n_tunasims_final = 16
+tunasims_n_iter = 3e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
@@ -70,8 +70,9 @@ for i in range(n_tunasims_final):
 selection_method = 'top'
 learning_rates = [0.05, 0.1, 0.25, 0.5]
 max_leaf_nodes = [20, 31, 40, 80]
-max_iter = [200, 800]
-l2_regs = [10, 20, 40, 80, 160]
+max_iter = [100, 800]
+l2_regs = [10, 20, 40, 80, 160, 320]
+max_bins = [75, 150, 255]
 
 #we will start with default model here to evaluate pickup from hyperparam tuning
 ensemble_candidates = [gbc()]
