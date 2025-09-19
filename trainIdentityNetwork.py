@@ -58,7 +58,7 @@ def main(config_path):
     query_adjustment_layer = layers.groupAdjustmentLayer(candidates = config.query_adjustment_candidates,
                                                          selection_method = config.selection_method,
                                                          groupby_column = ['queryID'],
-                                                         data_column_str = 'attribute')
+                                                         data_column_str = 'top_from_next')
 
     #create network
     network = IdentityMatchNetwork(train_path = f'{config.results_directory}/matched/train.pkl',

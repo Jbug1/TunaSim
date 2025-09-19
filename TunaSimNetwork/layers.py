@@ -75,6 +75,8 @@ class ensembleLayer:
             #logic from ng paper goes here
             pass
 
+        return train, val
+
 
 class groupAdjustmentLayer:
     """
@@ -203,7 +205,7 @@ class groupAdjustmentLayer:
         train = self.process_input_data(train)
         val = self.process_input_data(val)
 
-        self.model_layer.fit(train, val)
+        return self.model_layer.fit(train, val)
 
     def predict(self, data):
         """ 

@@ -38,42 +38,44 @@ class IdentityMatchNetwork:
 
         overall_start = time.time()
 
-        #fit initial tunasims
-        self.log.info('beginning tunaSim training')
-        self.tunaSim_layer.fit(pd.read_pickle(self.train_path))
+        yoop = False
+        if yoop:
+            #fit initial tunasims
+            self.log.info('beginning tunaSim training')
+            self.tunaSim_layer.fit(pd.read_pickle(self.train_path))
 
-        #create tunasim preds
-        self.log.info('creating tunasim predictions train')
-        train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path))
-        train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv', index = False)
+            #create tunasim preds
+            self.log.info('creating tunasim predictions train')
+            train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path))
+            train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv', index = False)
 
-        self.log.info('creating tunasim predicitons val_1')
-        val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
-        val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv', index = False)
+            self.log.info('creating tunasim predicitons val_1')
+            val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
+            val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv', index = False)
 
-        self.log.info('creating tunasim predictions val_2')
-        val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
-        val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
+            self.log.info('creating tunasim predictions val_2')
+            val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
+            val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
 
-        #select a tunasim aggregator from among candidates
-        self.log.info('beginning ensemble layer')
-        self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'), 
-                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
-        
-        #create train aggregated preds
-        self.log.info('beginning train aggregated predictions')
-        train_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'))
-        train_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv', index = False)
-        
-        #create val 1 aggregated preds
-        self.log.info('beginning train consolidated predictions')
-        val_1_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
-        val_1_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv', index = False)
+            #select a tunasim aggregator from among candidates
+            self.log.info('beginning ensemble layer')
+            self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'), 
+                                    val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
+            
+            #create train aggregated preds
+            self.log.info('beginning train aggregated predictions')
+            train_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'))
+            train_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv', index = False)
+            
+            #create val 1 aggregated preds
+            self.log.info('beginning train consolidated predictions')
+            val_1_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
+            val_1_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv', index = False)
 
-        #create val 2 aggregated preds
-        self.log.info('beginning train aggregated predictions')
-        val_2_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv'))
-        val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv', index = False)
+            #create val 2 aggregated preds
+            self.log.info('beginning train aggregated predictions')
+            val_2_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv'))
+            val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv', index = False)
 
         #fit group adjustment layer
         #train dataset now includes the first validation dataset
