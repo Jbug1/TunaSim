@@ -219,7 +219,7 @@ class tunaSim:
                                                                       self.target_intensity_a, 
                                                                       self.target_intensity_b)
             
-            score, grad_vals = tunaSim.sub_predict_grads(query,
+            score, self.grad_vals = tunaSim.sub_predict_grads(query,
                                                             target,
                                                             q_int_a_grad,
                                                             q_int_b_grad,
@@ -231,7 +231,6 @@ class tunaSim:
                                                             self.mult_b,
                                                             self.add_norm_b)
             
-            self.grad_vals = grad_vals
             return score
 
         else:
