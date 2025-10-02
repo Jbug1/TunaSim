@@ -14,8 +14,8 @@ target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_trai
 ppm_match_window = 10
 identity_column = 'inchi_base'
 results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
-ms2_da = 0.05
-ms2_ppm = None
+tolerance = 0.01
+units_ppm = False
 
 #first tunasim parameterization funcs
 bounds = {

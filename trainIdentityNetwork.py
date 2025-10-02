@@ -35,8 +35,8 @@ def main(config_path):
                                         identity_column = config.identity_column,
                                         outputs_directory = config.results_directory,
                                         ppm_match_window = config.ppm_match_window,
-                                        ms2_da = config.ms2_da,
-                                        ms2_ppm = config.ms2_ppm
+                                        tolerance = config.tolerance,
+                                        units_ppm = config.units_ppm
                                         )
         
         trainSetBuilder_.make_directory_structure()

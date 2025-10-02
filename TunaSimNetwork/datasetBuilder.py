@@ -1,15 +1,66 @@
 # conatins funcitons for importing data
 # this should include functions for reading in msps and cleaning/create sim datasets
 import pandas as pd
-from TunaSimNetwork.tools_fast import match_spectrum
 import numpy as np
 import os
 import time
 import bisect
 from logging import getLogger
-
+from numba import njit
 import warnings
 warnings.filterwarnings('ignore')
+
+from TunaSimNetwork.tools_fast import match_spectrum
+
+@njit
+def compute_pair_scores(mz_a, mz_b, tolerance, units_ppm):
+    """
+    rank the associaton of matched peaks
+    
+    Args:
+        mz_a, mz_b: Lists of mz for 2 spectra
+        int_a, int_b: Lists of intensities for 2 spectra 
+        tolerance: Maximum m/z difference ppm
+
+    Returns:
+        pairs: list of (i,j) tuples where mz_a[i] and mz_b[j] are within the tolerance window
+        scores: list of real numbers from (0,1] where scores[i] is the score of the pair in pairs[i]
+    """
+
+    max_pairs = len(mz_a) * len(mz_b)
+    pairs = np.zeros((max_pairs, 2), dtype=np.int32)
+    scores = np.zeros(max_pairs, dtype=np.float64)
+
+    count = 0
+    b_start_ind = 0
+    for i in range(mz_a.shape[0]):
+
+        #convert ppm tolerance to da
+        tolerance_ = tolerance * mz_a[i] / 1e6 if units_ppm else tolerance
+
+        for j in range(b_start_ind, mz_b.shape[0]):
+
+            #compute the difference in the mzs
+            dif = np.abs(mz_a[i] - mz_b[j])
+
+            #dif is within min tolerance
+            if dif <= tolerance_:
+
+                #add this pair score
+                pairs[count] = [i, j]
+                scores[count] = abs(dif)
+                count += 1
+
+            #otherwise we can increment the min index considered on b
+            elif mz_a[i] > mz_b[j]:
+
+                b_start_ind += 1
+
+            else:
+                break
+
+    return pairs[:count], scores[:count]
+
 
 def ppm(base, ppm):
     """
@@ -29,8 +80,8 @@ class trainSetBuilder:
                  outputs_directory: str,
                  ppm_match_window: int,
                  self_search: bool = False,
-                 ms2_da: float = None,
-                 ms2_ppm: float = None):
+                 tolerance: float = None,
+                 units_ppm: bool = False):
     
         self.query_input_path = query_input_path
         self.target_input_path = target_input_path
@@ -40,8 +91,8 @@ class trainSetBuilder:
         self.outputs_directory = outputs_directory
         self.ppm_match_window = ppm_match_window
         self.self_search = self_search
-        self.ms2_da = ms2_da
-        self.ms2_ppm = ms2_ppm
+        self.tolerance = tolerance
+        self.units_ppm = units_ppm
 
         if self.query_input_path == self.target_input_path:
             self.self_search = True
@@ -56,9 +107,6 @@ class trainSetBuilder:
             os.makedirs(f'{self.outputs_directory}/raw/query', exist_ok = True)
             os.makedirs(f'{self.outputs_directory}/raw/target', exist_ok = True)
             os.makedirs(f'{self.outputs_directory}/matched', exist_ok = True)
-
-            # for name in self.dataset_names:
-            #     os.makedirs(f'{self.outputs_directory}/matched/{name}', exist_ok = True)
 
         except Exception as e:
             self.log.error(f'unable to create directory structure: {e}')
@@ -231,23 +279,36 @@ class trainSetBuilder:
             #add new columns and rename old, flush to csv
             queries = list()
             targets = list()
+
+            queries_ = list()
+            targets_ = list()
             for target in within_range['spectrum']:
 
-                matched = match_spectrum(spectrum,
-                                        target, 
-                                        ms2_da = self.ms2_da, 
-                                        ms2_ppm = self.ms2_ppm)
+                query_matched, target_matched = trainSetBuilder.match_spectra(spectrum.astype(np.float64),
+                                                        target.astype(np.float64), 
+                                                        tolerance = self.tolerance, 
+                                                        units_ppm = self.units_ppm)
                 
-                queries.append(matched[:,1] / np.sum(matched[:,1]))
-                targets.append(matched[:,2] / np.sum(matched[:,2]))
+                queries.append(query_matched / np.sum(query_matched))
+                targets.append(target_matched / np.sum(target_matched))
+
+                matched = match_spectrum(spectrum.astype(np.float64),
+                                                        target.astype(np.float64), 
+                                                        ms2_da = self.tolerance)
+                
+                queries_.append(matched[:,1] / sum(matched[:,1]))
+                targets_.append(matched[:,2] / sum(matched[:,2]))
 
             within_range['query'] = queries 
             within_range['target'] = targets
 
+            within_range['query_new'] = queries_
+            within_range['target_new'] = targets_
+
             within_range["score"] = identity == within_range[self.identity_column]
             within_range['queryID'] = queryID
 
-            pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'score']])
+            pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'query_new', 'target_new', 'score']])
 
             if seen > max_size:
                 break
@@ -263,3 +324,49 @@ class trainSetBuilder:
         self.log.info(f'{unmatched} queries went unmatched')
 
         return
+    
+    @staticmethod
+    def match_spectra(spec_a, spec_b, tolerance, units_ppm):
+        """
+        Perform greedy peak matching between two spectra using ppm tolerance
+        
+        Args:
+            spec_a, spec_b: Lists of [mz, intensity] pairs 
+            tolerance: Maximum m/z difference in parts per million 
+        Returns:
+            intensities_a, intensities_b: List of peak intensities where intensities_a[i] is matched to intensities_b[i]
+        """
+
+        mz_a, int_a = spec_a[:, 0], spec_a[:, 1]
+        mz_b, int_b = spec_b[:, 0], spec_b[:, 1]
+
+        combined_spec = np.zeros((mz_a.shape[0] + mz_b.shape[0], 2), dtype = np.float64)
+        
+        pairs, scores = compute_pair_scores(mz_a, mz_b, tolerance, units_ppm)
+        
+        # Initialize combined spectrum with all spec_a peaks (unmatched have int_b=0)
+        combined_spec[:mz_a.shape[0], 0] += int_a
+        matched_b = set()
+        
+        if len(pairs) > 0:
+            sort_indices = np.argsort(scores)
+            pairs = pairs[sort_indices]
+            
+            matched_a = set()
+            for i, j in pairs:
+                if i not in matched_a and j not in matched_b:
+                    combined_spec[i][1] = int_b[j]
+                    matched_a.add(i)
+                    matched_b.add(j)
+        
+        # Add unmatched spec_b peaks w no spec_a match
+        unmatched_count = mz_a.shape[0]
+        for j in range(len(mz_b)):
+            if j not in matched_b:
+
+                combined_spec[unmatched_count][1] = int_b[j]
+                unmatched_count +=1
+        
+        
+        return combined_spec[:unmatched_count, 0], combined_spec[:unmatched_count, 1]
+
