@@ -42,6 +42,8 @@ class IdentityMatchNetwork:
         self.log.info('beginning tunaSim training')
         self.tunaSim_layer.fit(pd.read_pickle(self.train_path))
 
+        self.log.info(f'missing label: {self.tunaSim_layer.missing_label}')
+
         #create tunasim preds
         self.log.info('creating tunasim predictions train')
         train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path))

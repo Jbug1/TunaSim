@@ -10,8 +10,6 @@ from numba import njit
 import warnings
 warnings.filterwarnings('ignore')
 
-from TunaSimNetwork.tools_fast import match_spectrum
-
 @njit
 def compute_pair_scores(mz_a, mz_b, tolerance, units_ppm):
     """
@@ -279,9 +277,6 @@ class trainSetBuilder:
             #add new columns and rename old, flush to csv
             queries = list()
             targets = list()
-
-            queries_ = list()
-            targets_ = list()
             for target in within_range['spectrum']:
 
                 query_matched, target_matched = trainSetBuilder.match_spectra(spectrum.astype(np.float64),
@@ -292,23 +287,13 @@ class trainSetBuilder:
                 queries.append(query_matched / np.sum(query_matched))
                 targets.append(target_matched / np.sum(target_matched))
 
-                matched = match_spectrum(spectrum.astype(np.float64),
-                                                        target.astype(np.float64), 
-                                                        ms2_da = self.tolerance)
-                
-                queries_.append(matched[:,1] / sum(matched[:,1]))
-                targets_.append(matched[:,2] / sum(matched[:,2]))
-
             within_range['query'] = queries 
             within_range['target'] = targets
-
-            within_range['query_new'] = queries_
-            within_range['target_new'] = targets_
 
             within_range["score"] = identity == within_range[self.identity_column]
             within_range['queryID'] = queryID
 
-            pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'query_new', 'target_new', 'score']])
+            pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'score']])
 
             if seen > max_size:
                 break

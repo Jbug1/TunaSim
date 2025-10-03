@@ -3,17 +3,17 @@ from TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_new'
 
 #datasetBuilder params
 build_datasets = True
 dataset_names = ['train', 'val_1', 'val_2', 'test']
-dataset_max_sizes = [1e7, 1e7, 1e7, 1e7]
+dataset_max_sizes = [1e5, 1e5, 1e5, 1e5]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train.pkl'
 ppm_match_window = 10
 identity_column = 'inchi_base'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_new'
 tolerance = 0.01
 units_ppm = False
 
@@ -42,8 +42,8 @@ init_vals = {
     'query_intensity_b': 0.1
     }
 
-n_tunasims_final = 16
-tunasims_n_iter = 5e5
+n_tunasims_final = 30
+tunasims_n_iter = 1e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
@@ -51,7 +51,7 @@ learning_rate = 0.0005
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 2
 inference_chunk_size = 1e6
-n_inits = 8
+n_inits = 1
 
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):

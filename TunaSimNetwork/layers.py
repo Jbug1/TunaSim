@@ -275,7 +275,6 @@ class tunaSimLayer:
         self.residual_downsample_percentile = residual_downsample_percentile
         self.inference_jobs = inference_jobs
         self.inference_chunk_size = int(inference_chunk_size)
-        self.percent_pos_before_downsample = list()
         
     def residual_downsample_tunasims(self, dataset, trainer):
         """ 
@@ -285,31 +284,26 @@ class tunaSimLayer:
         dataset['preds'] = trainer.function.predict_for_dataset(dataset)
         dataset['residual'] = abs(dataset['score'] - dataset['preds'])
 
-        #we will base this off minimum residual (best score) by group
-        temp = dataset[trainer.groupby_column + ['score','residual']].groupby(trainer.groupby_column).min()
+        if trainer.balance_column is not None:
 
-        residual_thresh = np.percentile(temp['residual'], self.residual_downsample_percentile)
-        self.percent_pos_before_downsample.append(round(len(temp[temp['score'] == 1])/len(temp) * 100,4))
+            temp = dataset[trainer.groupby_column + list(set(['score','residual', trainer.balance_column]))].groupby(trainer.groupby_column).min()
 
-        #track balance column distribution from groups above residual thresh
-        pos = 0
-        neg = 0
+            #gather ids above thresh for both values of balance col
+            zeros = temp[temp[trainer.balance_column] == 0]
+            ones = temp[temp[trainer.balance_column] == 1]
 
-        #track groups where we are above residual threshold to train on in next round
-        #index of temp is now tuples of the groupby column
-        bad_ids = set()
-        for residual, id, score in zip(temp['residual'], 
-                                       temp.index,
-                                        temp['score']):
+            zero_ids = self.get_ids_above_thresh(zeros)
+            one_ids = self.get_ids_above_thresh(ones)
 
-            if residual >= residual_thresh:
-                bad_ids.add(id)
+            bad_ids = zero_ids.union(one_ids)
 
-                if score == 1:
-                    pos+=1
+        else:
 
-                else:
-                    neg+=1
+            #we will base this off minimum residual (best score) by group
+            temp = dataset[trainer.groupby_column + ['score','residual']].groupby(trainer.groupby_column).min()
+
+            bad_ids = self.get_ids_above_thresh(temp)
+
 
         #go back and grab the indexes of all groups that were above residual threshold
         #the ids we want to compare are row level tuples of any groupby column
@@ -324,6 +318,22 @@ class tunaSimLayer:
         dataset = dataset.iloc[residual_inds][trainer.groupby_column + ['query', 'target', 'score']]
     
         return dataset
+    
+    def get_ids_above_thresh(self, dataframe):
+
+        residual_thresh = np.percentile(dataframe['residual'], self.residual_downsample_percentile)
+
+        #track groups where we are above residual threshold to train on in next round
+        #index of temp is now tuples of the groupby column
+        bad_ids = set()
+        for residual, id in zip(dataframe['residual'], 
+                                       dataframe.index):
+
+            if residual >= residual_thresh:
+                bad_ids.add(id)
+
+        return bad_ids
+
 
     def fit(self, dataset):
 

@@ -121,8 +121,6 @@ class tunaSimTrainer:
             tops = train_data.sort_values(by = self.groupby_column + ['preds'], ascending = False)
             tops = tops.groupby(self.groupby_column).first()
 
-            self.log.info('here')
-
             #get the auc on train data for this trained function
             init_auc = roc_auc_score(tops['score'], tops['preds'])
             self.performance_by_initialization.append(init_auc)
