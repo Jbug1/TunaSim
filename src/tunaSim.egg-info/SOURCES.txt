@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/Scripts/trainIdentityNetwork.py
+src/Scripts/trainIdentityNetworkConfig.py
+src/TunaSimNetwork/__init__.py
+src/TunaSimNetwork/datasetBuilder.py
+src/TunaSimNetwork/funcTrainer.py
+src/TunaSimNetwork/layers.py
+src/TunaSimNetwork/networks.py
+src/TunaSimNetwork/oldMetrics.py
+src/TunaSimNetwork/tunas.py
+src/tunaSim.egg-info/PKG-INFO
+src/tunaSim.egg-info/SOURCES.txt
+src/tunaSim.egg-info/dependency_links.txt
+src/tunaSim.egg-info/top_level.txt

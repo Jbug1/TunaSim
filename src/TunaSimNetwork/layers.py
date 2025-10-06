@@ -347,14 +347,6 @@ class tunaSimLayer:
             #downsample from train before fitting next model
             dataset = self.residual_downsample_tunasims(dataset, trainer)
 
-            #check that we have two classes left
-            remaining_labels = list(set(dataset['score']))
-            if len(remaining_labels) == 1:
-
-                self.missing_label = not remaining_labels[0]
-
-                break
-
         self.trainers = [trainer for trainer in self.trainers if trainer.trained == True]
 
     def predict(self, dataset):

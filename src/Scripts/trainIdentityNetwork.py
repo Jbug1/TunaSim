@@ -3,7 +3,7 @@ from logging import getLogger, basicConfig
 from importlib.util import spec_from_file_location, module_from_spec
 from TunaSimNetwork.datasetBuilder import trainSetBuilder
 from TunaSimNetwork.networks import IdentityMatchNetwork
-import TunaSimNetwork.layers as layers
+from TunaSimNetwork import layers
 from sys import argv
 import shutil
 from os import makedirs
