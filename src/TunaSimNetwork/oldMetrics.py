@@ -148,15 +148,6 @@ class oldMetricEvaluator:
         """
         return np.sum(np.sqrt(p * q))
 
-    def score_all_matches(self, queries, targets, sim_func):
-
-        res = list()
-        for query, target in zip(queries, targets):
-
-            res.append(sim_func(query, target))
-
-        return res
-
     def evaluate_and_write_results(self):
         """ 
         Evaluates this set of old measures for a collection of queries and targets
@@ -184,17 +175,23 @@ class oldMetricEvaluator:
             targets = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in targets]
 
         #get weighted scores
-        results = Parallel(n_jobs = -1)(delayed(self.score_all_matches)(queries, 
-                                                                        targets, 
-                                                                        metric) for metric in self.metrics)
+        results = list()
+
+        for metric, name in zip(self.metrics, self.names):
+
+            scores = list()
+            for query, target in zip(queries, targets):
+
+                scores.append(metric(query, target))
         
-        results = pd.DataFrame({self.names[i]: results[i] for i in range(len(self.names))})
-        for column in self.groupby_columns + ['score']:
-            results.insert(0, column, self.dataset[column].to_list())
+            self.dataset[name] = scores
         
-        #get performance
-        performance = results.groupby(self.groupby_columns).max()
-        performance = [[name, roc_auc_score(performance['score'], performance[name])] for name in self.names]
-        performance = pd.DataFrame(performance, columns = ['name', 'performance'])
+            #get performance
+            performance = self.dataset.groupby(self.groupby_columns).max()
+
+        if reweighted:
+            results.append((name, roc_auc_score(performance['score'], performance[name+'_reweighted'])))
+        else:
+            results.append((name, roc_auc_score(performance['score'], performance[name])))
         
-        return results, performance
+        return pd.DataFrame(performance, columns = ['name', 'performance'])
