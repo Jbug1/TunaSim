@@ -10,12 +10,10 @@ from sklearn.metrics import roc_auc_score
 class oldMetricEvaluator:
 
     def __init__(self,
-                 dataset,
                  groupby_columns,
                  intermediates_path,
                  performance_path):
         
-        self.dataset = dataset
         self.groupby_columns = groupby_columns
         self.intermediates_path = intermediates_path
         self.performance_path = performance_path
@@ -26,7 +24,6 @@ class oldMetricEvaluator:
                     oldMetricEvaluator.probabilistic_symmetric_chi_squared_similarity,
                     oldMetricEvaluator.lorentzian_similarity,
                     oldMetricEvaluator.matusita_similarity,
-                    oldMetricEvaluator.harmonic_mean_similarity,
                     oldMetricEvaluator.fidelity_similarity]
         
         self.names = ['entropy',
@@ -35,7 +32,6 @@ class oldMetricEvaluator:
                 'chi_squared',
                 'lorentzian',
                 'matusita',
-                'harmonic_mean',
                 'fidelity']
 
     @staticmethod
@@ -55,63 +51,29 @@ class oldMetricEvaluator:
     @staticmethod
     @njit
     def harmonic_mean_similarity(p, q):
-        r"""
-        Harmonic mean distance:
 
-        .. math::
-
-            1-2\sum(\frac{P_{i}Q_{i}}{P_{i}+Q_{i}})
-        """
-
-        return 1 - 2 * np.sum(p * q / (p + q))
+        return 2 * np.sum(p * q / (p + q))
 
     @staticmethod
     @njit
     def lorentzian_similarity(p, q):
-        r"""
-        Lorentzian distance:
-
-        .. math::
-
-            \sum{\ln(1+|P_i-Q_i|)}
-        """
 
         return 1 - np.sum(np.log(1 + np.abs(p - q)))
 
     @staticmethod
     @njit
     def matusita_similarity(p, q):
-        r"""
-        Matusita distance:
-
-        .. math::
-
-            \sqrt{\sum(\sqrt{P_{i}}-\sqrt{Q_{i}})^2}
-        """
+    
         return 1 - np.sqrt(np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2))) / np.sqrt(2)
 
     @staticmethod
     @njit
     def probabilistic_symmetric_chi_squared_similarity(p, q):
-        r"""
-        Probabilistic symmetric χ2 distance:
-
-        .. math::
-
-            \frac{1}{2} \times \sum\frac{(P_{i}-Q_{i}\ )^2}{P_{i}+Q_{i}\ }
-        """
     
         return 1 - (1 / 2 * np.sum(np.power(p - q, 2) / (p + q)))
 
     @staticmethod
     def entropy_similarity(p, q):
-        r"""
-        Unweighted entropy distance:
-
-        .. math::
-
-            -\frac{2\times S_{PQ}-S_P-S_Q} {ln(4)}, S_I=\sum_{i} {I_i ln(I_i)}
-        """
     
         merged = p + q
         entropy_increase = 2 * \
@@ -123,29 +85,16 @@ class oldMetricEvaluator:
     @staticmethod
     @njit
     def dot_product_similarity(p, q):
-        r"""
-        Dot product distance:
-
-        .. math::
-
-            1 - \sqrt{\frac{(\sum{Q_iP_i})^2}{\sum{Q_i^2\sum P_i^2}}}
-        """
         
         score = np.power(np.sum(q * p), 2) / (
             np.sum(np.power(q, 2)) * np.sum(np.power(p, 2))
         )
-        return 1 - np.sqrt(score)
+        return np.sqrt(score)
 
     @staticmethod
     @njit
     def fidelity_similarity(p, q):
-        r"""
-        Fidelity distance:
-
-        .. math::
-
-            1-\sum\sqrt{P_{i}Q_{i}}
-        """
+     
         return np.sum(np.sqrt(p * q))
 
     def evaluate_and_write_results(self):
@@ -164,10 +113,10 @@ class oldMetricEvaluator:
         performance.to_csv(f'{self.performance_path}/old_metrics_weighted.csv')
 
         
-    def get_evals(self, reweighted = False):
+    def get_evals(self, dataset, reweighted = False):
 
-        queries = self.dataset['query'].to_numpy()
-        targets = self.dataset['target'].to_numpy()
+        queries = dataset['query'].to_numpy()
+        targets = dataset['target'].to_numpy()
 
         if reweighted:
 
@@ -177,21 +126,25 @@ class oldMetricEvaluator:
         #get weighted scores
         results = list()
 
-        for metric, name in zip(self.metrics, self.names):
+        if reweighted:
+            names = [i+'_reweighted' for i in self.names]
+        else:
+            names = self.names
 
-            scores = list()
+        for metric, name in zip(self.metrics, names):
+
+            preds = list()
             for query, target in zip(queries, targets):
 
-                scores.append(metric(query, target))
-        
-            self.dataset[name] = scores
-        
-            #get performance
-            performance = self.dataset.groupby(self.groupby_columns).max()
+                preds.append(metric(query, target))
 
-        if reweighted:
-            results.append((name, roc_auc_score(performance['score'], performance[name+'_reweighted'])))
-        else:
-            results.append((name, roc_auc_score(performance['score'], performance[name])))
+            dataset[name] = preds
         
-        return pd.DataFrame(performance, columns = ['name', 'performance'])
+        #get performance
+        performance = dataset[self.groupby_columns + names + ['score']].groupby(self.groupby_columns).max()
+    
+        for name in names:
+
+            results.append((name, round(roc_auc_score(performance['score'], performance[name]),5)))
+        
+        return pd.DataFrame(results, columns = ['name', 'performance'])

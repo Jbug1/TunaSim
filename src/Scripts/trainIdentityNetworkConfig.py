@@ -3,8 +3,8 @@ from TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_yoop'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_yoop'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
 
 #datasetBuilder params
 build_datasets = True
@@ -44,14 +44,14 @@ init_vals = {
 
 n_tunasims_final = 16
 tunasims_n_iter = 5e5
-residual_downsample_percentile = 25
+residual_downsample_percentile = 20
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.0005
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
-inference_jobs = 2
+inference_jobs = 4
 inference_chunk_size = 1e6
-n_inits = 1
+n_inits = 5
 
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):

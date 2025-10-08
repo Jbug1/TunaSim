@@ -214,7 +214,6 @@ class groupAdjustmentLayer:
         3) return combined predictions for single and multi
         """
 
-        print('heya')
         multi_hits = self.process_input_data(data)
 
         #build adjustment dictionary
@@ -227,7 +226,6 @@ class groupAdjustmentLayer:
 
         #populate dictionary
         adjustment_preds = self.model_layer.predict(multi_hits)
-
 
         for id, pred in zip(adjustment_preds[self.groupby_column].to_numpy().flatten(), adjustment_preds['preds'].to_numpy()):
 

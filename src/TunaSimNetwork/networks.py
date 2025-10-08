@@ -109,7 +109,4 @@ class IdentityMatchNetwork:
         #query adjustment layer
         layer_output = self.query_adjustment_layer.predict(layer_output)
 
-        if write_intermediates:
-            layer_output.to_csv(f'{self.intermediate_outputs_path}/network_output.csv', index = False)
-
         return layer_output

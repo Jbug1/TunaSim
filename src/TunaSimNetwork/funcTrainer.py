@@ -64,6 +64,8 @@ class tunaSimTrainer:
         self.balance_column = balance_column
         self.trained = False
 
+        self.final_function = self.map_to_minus_1
+
         self.balance_flag = 0
 
         self.log = getLogger(__name__)
@@ -83,7 +85,14 @@ class tunaSimTrainer:
 
         self.bounds = [bounds[key] for key in self.init_vals]
 
+    def map_to_minus_1(*args):
+
+        return -1
+
     def fit(self, train_data):
+
+        #improve stability by shuffling training data
+        train_data = train_data.sample(frac = 1)
 
         self.log.info(f'beginning training {self.name}')
 

@@ -7,7 +7,7 @@ import shutil
 from os import makedirs
 from pickle import load
 from sklearn.metrics import roc_auc_score
-from pandas import read_pickle, concat
+import pandas as pd
 
 def main(config_path):
 
@@ -52,40 +52,63 @@ def main(config_path):
 
     logger.info('loaded network')
 
-    network.intermdeiate_outputs_path = config.results_directory
+    network.intermediate_outputs_path = config.results_directory
 
-    match_data = read_pickle(f'{config.matches_input_directory}/{config.dataset_names[0]}.pkl')
+    match_data = pd.read_pickle(f'{config.matches_input_directory}/{config.dataset_names[0]}.pkl')
 
     preds = network.predict(match_data, 
                             write_intermediates = config.write_intermediates)
 
-    preds.to_csv(config.output_directory, index = False)
+    preds.to_csv(f'{config.results_directory}/network_predicitons.csv', index = False)
 
     logger.info('generated network preds')
 
-    network_performance = roc_auc_score(preds['score'], preds['preds'])
+    int_results = list()
+    int_names = list()
+
+    int_results.append(roc_auc_score(preds['score'], preds['preds']))
+    int_names.append('full_network')
+
+    if config.network_performance_attribution:
+
+        tunasims = pd.read_csv(f'{config.results_directory}/tunaSim_output.csv')
+
+        for col in tunasims.columns:
+
+            if 'tuna' in col:
+
+                #tunasim layer results are already grouped by max
+                int_results.append(round(roc_auc_score(tunasims['score'], tunasims[col]),5))
+                int_names.append(col)
+
+        ensembled_tunasims = pd.read_csv(f'{config.results_directory}/ensemble_output.csv')
+
+        int_results.append(round(roc_auc_score(ensembled_tunasims['score'], ensembled_tunasims['preds']),5))
+        int_names.append('ensembled')
+
+    network_performance = pd.DataFrame(list(zip(int_names, int_results)), columns = ['name', 'performance'])
 
     if config.evaluate_old_metrics:
 
-        evaluator = oldMetricEvaluator()
+        evaluator = oldMetricEvaluator(groupby_columns = network.tunaSim_layer.trainers[0].groupby_column,
+                                       intermediates_path = config.results_directory,
+                                       performance_path = config.results_directory)
 
         performance = evaluator.get_evals(match_data)
 
         logger.info('evaluated original metrics')
 
-        performance = concat((performance, evaluator.get_evals(match_data, reweighted = True)))
+        performance = pd.concat((performance, evaluator.get_evals(match_data, reweighted = True)))
 
         logger.info('evaluated reweighted original metrics')
         
-        performance.loc[-1] = ['network', round(network_performance,5)]
-
-        performance.to_csv(f'{config.matches_input_directory}/performance.csv', index = False)
+        performance = pd.concat((performance, network_performance))
+        
+        performance.to_csv(f'{config.results_directory}/performance.csv', index = False)
 
     else:
 
-        with open(f'{config.results_directory}/performance.csv', 'w') as handle:
-
-            handle.write(f'network, {round(network_performance,5)}')
+        network_performance.to_csv(f'{config.results_directory}/performance.csv', index = False)
 
 
 if __name__ == '__main__':
