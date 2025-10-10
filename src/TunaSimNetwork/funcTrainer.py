@@ -91,21 +91,19 @@ class tunaSimTrainer:
 
     def fit(self, train_data):
 
-        #improve stability by shuffling training data
-        train_data = train_data.sample(frac = 1)
-
         self.log.info(f'beginning training {self.name}')
 
         total_start = time.time()
-        self.build_inds_dict(train_data)
-
-        self.log.info(f'created inds dict in {round((time.time() - total_start) / 60,4)} minutes')
 
         self.performance_by_initialization = list()
         self.best_auc = 0
         self.initializations = list()
         self.trained_funcs = list()
         for _ in range(self.n_inits):
+
+            train_data = train_data.sample(frac = 1)
+
+            self.build_inds_dict(train_data)
 
             self.initializations.append(copy.deepcopy(self.init_vals))
 

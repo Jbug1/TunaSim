@@ -6,7 +6,6 @@ from numba import njit
 from joblib import Parallel, delayed
 from sklearn.metrics import roc_auc_score
 
-
 class oldMetricEvaluator:
 
     def __init__(self,
@@ -24,7 +23,8 @@ class oldMetricEvaluator:
                     oldMetricEvaluator.probabilistic_symmetric_chi_squared_similarity,
                     oldMetricEvaluator.lorentzian_similarity,
                     oldMetricEvaluator.matusita_similarity,
-                    oldMetricEvaluator.fidelity_similarity]
+                    oldMetricEvaluator.fidelity_similarity,
+                    oldMetricEvaluator.squared_chord_similarity]
         
         self.names = ['entropy',
                 'dot_product',
@@ -32,7 +32,8 @@ class oldMetricEvaluator:
                 'chi_squared',
                 'lorentzian',
                 'matusita',
-                'fidelity']
+                'fidelity',
+                'squared_chord']
 
     @staticmethod
     @njit
@@ -65,6 +66,12 @@ class oldMetricEvaluator:
     def matusita_similarity(p, q):
     
         return 1 - np.sqrt(np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2))) / np.sqrt(2)
+    
+    @staticmethod
+    @njit
+    def squared_chord_similarity(p, q):
+ 
+        return 1 - np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2))
 
     @staticmethod
     @njit

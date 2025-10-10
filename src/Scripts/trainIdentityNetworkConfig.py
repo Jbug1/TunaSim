@@ -3,8 +3,8 @@ from TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_0.05'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_0.05'
 
 #datasetBuilder params
 build_datasets = True
@@ -20,14 +20,14 @@ units_ppm = False
 #first tunasim parameterization funcs
 bounds = {
     'mult_a': (-3,3),
-    'mult_b': (1e-10, 2),
+    'mult_b': (1e-3, 2),
     'dif_a':(-3,3),
-    'dif_b': (1e-10, 2),
-    'add_norm_b': (0, 2),
-    'query_intensity_a': (1e-10,2),
-    'query_intensity_b': (1e-10,2),
-    'target_intensity_a': (1e-10,2),
-    'target_intensity_b': (1e-10,2)
+    'dif_b': (1e-3, 2),
+    'add_norm_b': (1e-3, 2),
+    'query_intensity_a': (1e-3,2),
+    'query_intensity_b': (1e-3,2),
+    'target_intensity_a': (1e-3,2),
+    'target_intensity_b': (1e-3,2)
     }
 
 init_vals = {
@@ -51,7 +51,7 @@ learning_rate = 0.0005
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 4
 inference_chunk_size = 1e6
-n_inits = 5
+n_inits = 8
 
 tunaSim_trainers = list()
 for i in range(n_tunasims_final):

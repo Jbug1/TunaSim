@@ -23,7 +23,7 @@ def main(config_path):
     logger = getLogger(__name__)
 
     #copy config file to log folder
-    shutil.copy(config_path, f'{config.log_path}/config.py')
+    shutil.copy(config_path, f'{config.log_path}/config_eval.py')
 
     logger.info(f'instantiated log and copied config')
 
@@ -54,7 +54,7 @@ def main(config_path):
 
     network.intermediate_outputs_path = config.results_directory
 
-    match_data = pd.read_pickle(f'{config.matches_input_directory}/{config.dataset_names[0]}.pkl')
+    match_data = pd.read_pickle(f'{config.matches_input_directory}/matched/{config.dataset_names[0]}.pkl')
 
     preds = network.predict(match_data, 
                             write_intermediates = config.write_intermediates)

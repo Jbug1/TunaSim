@@ -1,17 +1,31 @@
 #config for evaluateIdentityNetwork.py
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results/eval'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_0.05'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_0.05/metlin_eval'
 
+#path to network pickle file
 network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results/network.pkl'
 
-build_datasets = False
-dataset_names = ['test_stub']
+#mandatory dataset params
+dataset_names = ['metlin_test']
+
+#optional dataset building params
+build_datasets = True
+
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin.pkl'
+dataset_max_sizes = [1e7]
+
+ppm_match_window = 10
+identity_column = 'inchi_base'
+tolerance = 0.01
+units_ppm = False
+identity_column = 'inchi_base'
 
 evaluate_old_metrics = True
 
-matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results/matched'
+matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_0.05/matched_metlin/'
 write_intermediates = True
 reweighted = True
 
@@ -21,4 +35,3 @@ network_performance_attribution = True
 if network_performance_attribution:
 
     write_intermediates = True
-
