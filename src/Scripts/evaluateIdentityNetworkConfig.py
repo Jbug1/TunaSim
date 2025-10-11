@@ -13,8 +13,8 @@ dataset_names = ['metlin_test']
 #optional dataset building params
 build_datasets = True
 
-query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin.pkl'
-target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin.pkl'
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_noprec.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_noprec.pkl'
 dataset_max_sizes = [1e7]
 
 ppm_match_window = 10

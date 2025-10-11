@@ -129,7 +129,15 @@ class tunaSimTrainer:
             tops = tops.groupby(self.groupby_column).first()
 
             #get the auc on train data for this trained function
-            init_auc = roc_auc_score(tops['score'], tops['preds'])
+
+            try:
+                init_auc = roc_auc_score(tops['score'], tops['preds'])
+
+            except ValueError as err:
+
+                init_auc = -1
+                self.log.info(f'failed to calculate AUROC: {err}')
+
             self.performance_by_initialization.append(init_auc)
 
             #if this is the best performer so far, retain it
