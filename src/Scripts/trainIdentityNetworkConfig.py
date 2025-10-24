@@ -3,8 +3,8 @@ from TunaSimNetwork.funcTrainer import tunaSimTrainer
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_0.05'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_0.05'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_cleaned'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_cleaned'
 
 #datasetBuilder params
 build_datasets = True

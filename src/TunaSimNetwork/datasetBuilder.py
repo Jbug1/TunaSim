@@ -311,6 +311,57 @@ class trainSetBuilder:
         return
     
     @staticmethod
+    def match_peaks_in_spectra(spec_a, spec_b, ms2_ppm=None, ms2_da=None):
+        """
+        Match two spectra, find common peaks. If both ms2_ppm and ms2_da is defined, ms2_da will be used.
+        :return: list. Each element in the list is a list contain three elements:
+                                m/z, intensity from spec 1; intensity from spec 2.
+        """
+
+        a = 0
+        b = 0
+
+        spec_merged = []
+        peak_b_int = 0.
+
+        while a < spec_a.shape[0] and b < spec_b.shape[0]:
+            if ms2_da is None:
+                ms2_da = ms2_ppm * spec_a[a, 0] * 1e-6
+            mass_delta = spec_a[a, 0] - spec_b[b, 0]
+
+            if mass_delta < -ms2_da:
+                # Peak only existed in spec a.
+                spec_merged.append([spec_a[a, 0], spec_a[a, 1], peak_b_int])
+                peak_b_int = 0.
+                a += 1
+            elif mass_delta > ms2_da:
+                # Peak only existed in spec b.
+                spec_merged.append([spec_b[b, 0], 0., spec_b[b, 1]])
+                b += 1
+            else:
+                # Peak existed in both spec.
+                peak_b_int += spec_b[b, 1]
+                b += 1
+
+        if peak_b_int > 0.:
+            spec_merged.append([spec_a[a, 0], spec_a[a, 1], peak_b_int])
+            peak_b_int = 0.
+            a += 1
+
+        if b < spec_b.shape[0]:
+            spec_merged += [[x[0], 0., x[1]] for x in spec_b[b:]]
+
+        if a < spec_a.shape[0]:
+            spec_merged += [[x[0], x[1], 0.] for x in spec_a[a:]]
+
+        if spec_merged:
+            spec_merged = np.array(spec_merged, dtype=np.float64)
+        else:
+            spec_merged = np.array([[0., 0., 0.]], dtype=np.float64)
+        return spec_merged
+
+    
+    @staticmethod
     def match_spectra(spec_a, spec_b, tolerance, units_ppm):
         """
         Perform greedy peak matching between two spectra using ppm tolerance

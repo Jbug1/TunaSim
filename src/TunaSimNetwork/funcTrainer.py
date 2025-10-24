@@ -129,7 +129,6 @@ class tunaSimTrainer:
             tops = tops.groupby(self.groupby_column).first()
 
             #get the auc on train data for this trained function
-
             try:
                 init_auc = roc_auc_score(tops['score'], tops['preds'])
 

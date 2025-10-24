@@ -1,20 +1,20 @@
 #config for evaluateIdentityNetwork.py
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_cleaned'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_cleaned'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_metlin/'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metlin/'
 
 #path to network pickle file
 network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_1/network.pkl'
 
 #mandatory dataset params
-dataset_names = ['test']
+dataset_names = ['nist_test']
 
 #optional dataset building params
-build_datasets = False
+build_datasets = True
 
-query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_metlin_overlap_noprec.pkl'
-target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_metlin_overlap_noprec.pkl'
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_noprec_clean.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_noprec_clean.pkl'
 dataset_max_sizes = [1e7]
 
 ppm_match_window = 10
@@ -25,7 +25,7 @@ identity_column = 'inchi_base'
 
 evaluate_old_metrics = True
 
-matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_cleaned'
+matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/metlin'
 write_intermediates = True
 reweighted = True
 

@@ -8,6 +8,7 @@ from os import makedirs
 from pickle import load
 from sklearn.metrics import roc_auc_score
 import pandas as pd
+import numpy as np
 
 def main(config_path):
 
@@ -78,8 +79,16 @@ def main(config_path):
             if 'tuna' in col:
 
                 #tunasim layer results are already grouped by max
-                int_results.append(round(roc_auc_score(tunasims['score'], tunasims[col]),5))
+                try:
+                    int_results.append(round(roc_auc_score(tunasims['score'], tunasims[col]),5))
+
+                except Exception as err:
+                    logger.info(err)
+                    int_results.append(-1)
+
                 int_names.append(col)
+
+                logger.info(f'evaluated: {col}')
 
         ensembled_tunasims = pd.read_csv(f'{config.results_directory}/ensemble_output.csv')
 
