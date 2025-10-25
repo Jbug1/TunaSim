@@ -7,6 +7,7 @@ def sigmoid(z):
     
         return 1/(1 + np.exp(-z))
 
+
 class tunaSim:
 
     def __init__(self,
@@ -22,7 +23,6 @@ class tunaSim:
                 ms2_da: float = 0.05,
                 ms2_ppm: float = None):
         
-        super().__init__()
 
         self.query_intensity_a = query_intensity_a
         self.query_intensity_b = query_intensity_b
@@ -286,195 +286,28 @@ def smooth_reweight(array,
     return a * np.power(array, b)
 
 
-class tunaTop:
-
-    ''' 
-    reweights a set of core matches for a given query based on the scores of other potential matches
-    '''
+class baseShellSim:
 
     def __init__(self,
-                 raw_scores_a: float = None,
-                 raw_scores_b: float = 0,
-                 top_to_next_a: float = None,
-                 top_to_next_b: float = 0,
-                 entropy_a: float = None,
-                 entropy_b: float = 0,
-                 weight_combine: str = 'add'):
+                 sim_func):
         
-        self.raw_scores_a = raw_scores_a
-        self.raw_scores_b = raw_scores_b
-        self.top_to_next_a = top_to_next_a
-        self.top_to_next_b = top_to_next_b
-        self.entropy_a = entropy_a
-        self.entropy_b = entropy_b
-        self.weight_combine = weight_combine
+        self.sim_func = sim_func
 
-        if self.weight_combine == 'add':
-            self.raw_scores_a = (self.raw_scores_a or 0)
-            self.top_to_next_a = (self.top_to_next_a or 0)
-            self.entropy_a = (self.entropy_a or 0)
+    def predict_for_dataset(self, dataset):
 
-        else:
-            self.raw_scores_a = (self.raw_scores_a or 1)
-            self.top_to_next_a = (self.top_to_next_a or 1)
-            self.entropy_a = (self.entropy_a or 1)
+        res = np.zeros(dataset.shape[0])
 
-        self.grad_names = np.array(['raw_scores_a',
-                                    'raw_scores_b',
-                                    'top_to_next_a',
-                                    'top_to_next_b',
-                                    'entropy_a',
-                                    'entropy_b'])
+        for index, query, target in zip([i for i in range(dataset.shape[0])], dataset['query'], dataset['target']):
 
+            res[index] = self.predict(query, target)
 
-    def predict(self, scores, grads = True):
-        """ 
-        steps:
-            1) get prob of not matching any of these labels
-            2) reorder intensities by prob of match descending
-            3) reweight probabilities according to which transformations  are triggered
-            4) consolidate probabilities of match
-            5) clip values below 0
-            6) normalize so that all probs sum to 1
-        """
-
-        if grads:
-
-            pred_val, self.grad_vals = tunaTop.sub_predict_grads(scores,
-                                                                 entropy(scores),
-                                                                self.raw_scores_a,
-                                                                self.raw_scores_b,
-                                                                self.top_to_next_a,
-                                                                self.top_to_next_b,
-                                                                self.entropy_a,
-                                                                self.entropy_b,
-                                                                self.weight_combine)
-            
-        else:
-
-            pred_val = tunaTop.sub_predict_grads(scores,
-                                                entropy(scores),
-                                                self.raw_scores_a,
-                                                self.raw_scores_b,
-                                                self.top_to_next_a,
-                                                self.top_to_next_b,
-                                                self.entropy_a,
-                                                self.entropy_b,
-                                                self.weight_combine)
-        
-        return pred_val
+        return res
     
-    @staticmethod
-    @njit
-    def sub_predict_grads(scores,
-                          scores_entropy,
-                        raw_scores_a,
-                        raw_scores_b,
-                        top_from_next_a,
-                        top_from_next_b,
-                        entropy_a,
-                        entropy_b,
-                        weight_combine):
+    def predict(self,
+                query,
+                target):
         
-        """ 
-        steps:
-            1) reweight probabilities according to which transformations  are triggered
-            2) consolidate probabilities of match
-            3) softmax
-        """
+        return self.sim_func(query, target)
+    
 
-
-        components = np.zeros((3, scores.shape[0]), dtype = np.float64)
-
-        grads = np.zeros(6, dtype = np.float64)
-
-        #update components and their respective gradients
-        components[0], grads[0], grads[1] = smooth_reweight_grads(scores,
-                                                                 raw_scores_a,
-                                                                 raw_scores_b)
         
-        components[1], grads[2], grads[3] = smooth_reweight_grads(np.zeros(scores.shape[0]) + scores[0] - scores[1], 
-                                                                            top_from_next_a,
-                                                                            top_from_next_b)
-        
-        components[2], grads[4], grads[5] = smooth_reweight_grads(np.zeros(scores.shape[0]) + scores_entropy, 
-                                                                  entropy_a,
-                                                                  entropy_b)
-        
-
-        #combine wieghts according to specified protocol
-        if weight_combine == 'add':
-
-            components = np.sum(components, axis = 0)
-
-        else:
-
-            sub = (components[1] * components[2])[0]
-            grads[0] *= sub
-            grads[1] *= sub
-            grads[2] *= sub
-
-            sub = (components[0] * components[2])[0]
-            grads[3] *= sub
-            grads[4] *= sub
-            grads[5] *= sub
-
-            sub = (components[0] * components[1])[0]
-            grads[6] *= sub
-            grads[7] *= sub
-            grads[8] *= sub
-
-            components = components[0] * components[1] * components[2]
-
-        #sigmoid
-        components = sigmoid(components)
-        sig_grad = components[0] * (1 - components[0])
-        grads *= sig_grad
-
-        return components, grads
-
-    @staticmethod
-    @njit
-    def sub_predict(scores,
-                    scores_entropy,
-                    raw_scores_a,
-                    raw_scores_b,
-                    top_from_next_a,
-                    top_from_next_b,
-                    entropy_a,
-                    entropy_b,
-                    weight_combine):
-        
-        """ 
-        steps:
-            1) reweight probabilities according to which transformations  are triggered
-            2) consolidate probabilities of match
-            3) softmax
-        """
-
-        components = np.zeros((3, scores.shape[0]), dtype = np.float64)
-
-        #update components and their respective gradients
-        components[0] = smooth_reweight(scores,
-                                        raw_scores_a,
-                                        raw_scores_b)
-        
-        components[1] = smooth_reweight(np.zeros(scores.shape[0]) + scores[0] - scores[1], 
-                                        top_from_next_a,
-                                        top_from_next_b)
-        
-        components[2] = smooth_reweight_grads(np.zeros(scores.shape[0]) + scores_entropy, 
-                                            entropy_a,
-                                            entropy_b)
-        
-        #combine wieghts according to specified protocol
-        if weight_combine == 'add':
-
-            components = np.sum(components, axis = 0)
-
-        else:
-
-            components = components[0] * components[1] * components[2]
-
-        return sigmoid(components)
-

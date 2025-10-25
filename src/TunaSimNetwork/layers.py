@@ -280,7 +280,7 @@ class tunaSimLayer:
         keep only groupby column groups where residual is above threshold
         """
 
-        dataset['preds'] = trainer.function.predict_for_dataset(dataset)
+        dataset['preds'] = trainer.final_function.predict_for_dataset(dataset)
         dataset['residual'] = abs(dataset['score'] - dataset['preds'])
 
         if trainer.balance_column is not None:

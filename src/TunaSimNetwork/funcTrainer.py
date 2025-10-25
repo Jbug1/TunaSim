@@ -1,4 +1,4 @@
-import TunaSimNetwork.tunas as tunas
+from TunaSimNetwork.tunas import tunaSim, baseShellSim
 import numpy as np
 from typing import List
 import copy
@@ -10,9 +10,11 @@ from sklearn.metrics import roc_auc_score
 
 @njit
 def square_loss_grad(x, y):
+    """  
+    just take care of constant factor in lambda for step size
+    """
 
-        return 2 * (x - y)
-    
+    return x - y 
 
 class tunaSimTrainer:
     ''' 
@@ -33,7 +35,7 @@ class tunaSimTrainer:
 
     def __init__(self,
             name: str,
-            init_vals: dict,
+            init_vals: dict = {},
             n_inits: int = 1,
             learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
@@ -46,7 +48,7 @@ class tunaSimTrainer:
             groupby_column: str = None,
             balance_column: str = None):
         
-        self.function_space = tunas.tunaSim
+        self.function_space = tunaSim
 
         self.name = name
         self.init_vals = init_vals
@@ -85,11 +87,15 @@ class tunaSimTrainer:
 
         self.bounds = [bounds[key] for key in self.init_vals]
 
-    def map_to_minus_1(*args):
+    def map_to_minus_1(self, *args):
 
         return -1
 
     def fit(self, train_data):
+
+        #if final function already assigned, skip training
+        if self.final_function is not None:
+            return
 
         self.log.info(f'beginning training {self.name}')
 
@@ -320,3 +326,12 @@ class tunaSimTrainer:
                                                                           grads = True)       
 
 
+class baseShell(tunaSimTrainer):
+
+    def __init__(self,
+                 name,
+                 sim_func):
+        
+        super().__init__(name = name)
+
+        self.final_function = baseShellSim(sim_func)

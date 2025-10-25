@@ -8,7 +8,7 @@ results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metl
 network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_1/network.pkl'
 
 #mandatory dataset params
-dataset_names = ['nist_test']
+dataset_names = ['metlin_test']
 
 #optional dataset building params
 build_datasets = True
@@ -25,7 +25,7 @@ identity_column = 'inchi_base'
 
 evaluate_old_metrics = True
 
-matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/metlin'
+matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metlin/'
 write_intermediates = True
 reweighted = True
 

@@ -1,13 +1,14 @@
 #config file to pass all parameters onto script
-from TunaSimNetwork.funcTrainer import tunaSimTrainer
+from TunaSimNetwork.funcTrainer import tunaSimTrainer, baseShell
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
+from TunaSimNetwork.oldMetrics import oldMetricEvaluator
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_cleaned'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_cleaned'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_base_sim'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_base_sim'
 
 #datasetBuilder params
-build_datasets = True
+build_datasets = False
 dataset_names = ['train', 'val_1', 'val_2', 'test']
 dataset_max_sizes = [1e7, 1e7, 1e7, 1e7]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec.pkl'
@@ -42,7 +43,7 @@ init_vals = {
     'query_intensity_b': 0.1
     }
 
-n_tunasims_final = 16
+n_tunasims_additional = 7
 tunasims_n_iter = 5e5
 residual_downsample_percentile = 20
 tunaSim_balance_column = 'score'
@@ -54,7 +55,12 @@ inference_chunk_size = 1e6
 n_inits = 8
 
 tunaSim_trainers = list()
-for i in range(n_tunasims_final):
+
+tunaSim_trainers.append(baseShell(name = 'fidelity',
+                                  sim_func = oldMetricEvaluator.fidelity_similarity))
+
+
+for i in range(n_tunasims_additional):
     
     tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i+1}',
                                 init_vals = init_vals,
