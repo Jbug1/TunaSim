@@ -16,6 +16,10 @@ def square_loss_grad(x, y):
 
     return x - y 
 
+def base_density_sampler():
+
+    return 1
+
 class tunaSimTrainer:
     ''' 
     name: what to call this func ob 
@@ -46,7 +50,8 @@ class tunaSimTrainer:
             ad_slope: float  = 0.3,
             scale_holdover_vals: int = 2,
             groupby_column: str = None,
-            balance_column: str = None):
+            balance_column: str = None,
+            match_density_sampler: callable = base_density_sampler):
         
         self.function_space = tunaSim
 
@@ -64,9 +69,10 @@ class tunaSimTrainer:
         self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
         self.balance_column = balance_column
+        self.match_density_sampler = match_density_sampler
         self.trained = False
 
-        self.final_function = self.map_to_minus_1
+        self.final_function = None
 
         self.balance_flag = 0
 
@@ -93,11 +99,11 @@ class tunaSimTrainer:
 
     def fit(self, train_data):
 
+        self.log.info(f'beginning training {self.name}')
+
         #if final function already assigned, skip training
         if self.final_function is not None:
             return
-
-        self.log.info(f'beginning training {self.name}')
 
         total_start = time.time()
 
@@ -244,11 +250,13 @@ class tunaSimTrainer:
 
         if self.balance_flag == 0:
 
-            return self.zeros_dict[np.random.randint(self.num_0)]
+            inds = self.zeros_dict[np.random.randint(self.num_0)]
 
         else:
 
-            return self.ones_dict[np.random.randint(self.num_1)]
+            inds = self.ones_dict[np.random.randint(self.num_1)]
+
+        return np.random.permutation(inds)[:1 + int(self.match_density_sampler() * len(inds))]
 
 
     def stoch_descent(self, train_data):
@@ -327,11 +335,15 @@ class tunaSimTrainer:
 
 
 class baseShell(tunaSimTrainer):
-
+        
     def __init__(self,
                  name,
-                 sim_func):
+                 sim_func,
+                 groupby_column: str = None,
+                 balance_column: str = None):
         
-        super().__init__(name = name)
+        super().__init__(name = name,
+                         groupby_column = groupby_column,
+                         balance_column = balance_column)
 
         self.final_function = baseShellSim(sim_func)

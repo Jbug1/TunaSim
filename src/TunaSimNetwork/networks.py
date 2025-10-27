@@ -51,10 +51,6 @@ class IdentityMatchNetwork:
         val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
         val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv', index = False)
 
-        self.log.info('creating tunasim predictions val_2')
-        val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
-        val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
-
         #select a tunasim aggregator from among candidates
         self.log.info('beginning ensemble layer')
         self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'), 
@@ -71,19 +67,25 @@ class IdentityMatchNetwork:
         val_1_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv', index = False)
 
         #create val 2 aggregated preds
-        self.log.info('beginning train aggregated predictions')
-        val_2_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv'))
-        val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv', index = False)
+        if self.query_adjustment_layer is not None:
 
-        #fit group adjustment layer
-        #train dataset now includes the first validation dataset
-        self.log.info('beginning query adjustment')
-        adjustment_train, adjustment_val = self.query_adjustment_layer.fit(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
-                                                                            pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv')]),
-                                                                            val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
+            self.log.info('creating tunasim predictions val_2')
+            val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
+            val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
 
-        adjustment_train.to_csv(f'{self.intermediate_outputs_path}/adjustment_train.csv', index = False)
-        adjustment_val.to_csv(f'{self.intermediate_outputs_path}/adjustment_val.csv', index = False)
+            self.log.info('beginning train aggregated predictions')
+            val_2_aggregated_preds = self.ensemble_layer.predict(pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv'))
+            val_2_aggregated_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv', index = False)
+
+            #fit group adjustment layer
+            #train dataset now includes the first validation dataset
+            self.log.info('beginning query adjustment')
+            adjustment_train, adjustment_val = self.query_adjustment_layer.fit(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
+                                                                                pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv')]),
+                                                                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
+
+            adjustment_train.to_csv(f'{self.intermediate_outputs_path}/adjustment_train.csv', index = False)
+            adjustment_val.to_csv(f'{self.intermediate_outputs_path}/adjustment_val.csv', index = False)
 
         self.log.info(f'network training complete in {round((time.time() - overall_start) / 60, 4)} minutes')
 
@@ -107,6 +109,7 @@ class IdentityMatchNetwork:
             layer_output.to_csv(f'{self.intermediate_outputs_path}/ensemble_output.csv', index = False)
 
         #query adjustment layer
-        layer_output = self.query_adjustment_layer.predict(layer_output)
+        if self.query_adjustment_layer is not None:
+            layer_output = self.query_adjustment_layer.predict(layer_output)
 
         return layer_output

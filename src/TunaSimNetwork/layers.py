@@ -266,8 +266,8 @@ class tunaSimLayer:
 
     def __init__(self,
                  trainers,
-                 residual_downsample_percentile,
-                 inference_jobs = 1,
+                 residual_downsample_percentile: float,
+                 inference_jobs: int = 1,
                  inference_chunk_size = 1e6):
         
         self.trainers = trainers
