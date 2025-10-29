@@ -36,10 +36,10 @@ class tunaSim:
         self.ms2_da = ms2_da
         self.ms2_ppm = ms2_ppm
 
-        self.grad_names = ['dif_a',
-                          'dif_b', 
-                          'mult_a', 
+        self.grad_names = ['mult_a', 
                           'mult_b', 
+                          'dif_a',
+                          'dif_b', 
                           'add_norm_b',
                           'query_intensity_a',
                           'query_intensity_b',

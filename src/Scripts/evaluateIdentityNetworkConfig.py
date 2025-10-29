@@ -1,11 +1,11 @@
 #config for evaluateIdentityNetwork.py
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_cleaned'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_cleaned'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_bs_only'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_bs_only'
 
 #path to network pickle file
-network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_1/network.pkl'
+network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_bs_only/network.pkl'
 
 #mandatory dataset params
 dataset_names = ['test']
@@ -25,7 +25,7 @@ identity_column = 'inchi_base'
 
 evaluate_old_metrics = True
 
-matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_cleaned'
+matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_bs_only'
 write_intermediates = True
 reweighted = True
 

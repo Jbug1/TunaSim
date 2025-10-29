@@ -5,8 +5,8 @@ from TunaSimNetwork.oldMetrics import oldMetricEvaluator
 import numpy as np
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_uniform'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_uniform'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_newmethod'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod'
 
 #datasetBuilder params
 build_datasets = False
@@ -19,11 +19,23 @@ identity_column = 'inchi_base'
 tolerance = 0.01
 units_ppm = False
 
-#first tunasim parameterization funcs
-bounds = {
-    'mult_a': (-3,3),
+#tunasim bounds go here
+bounds_mult = {
+    'mult_a': (1,1),
     'mult_b': (1e-3, 2),
-    'dif_a':(-3,3),
+    'dif_a':(0,0),
+    'dif_b': (0, 0),
+    'add_norm_b': (0, 0),
+    'query_intensity_a': (1e-3,2),
+    'query_intensity_b': (1e-3,2),
+    'target_intensity_a': (1e-3,2),
+    'target_intensity_b': (1e-3,2)
+    }
+
+bounds_dif = {
+    'mult_a': (0,0),
+    'mult_b': (0, 0),
+    'dif_a':(-1,-1),
     'dif_b': (1e-3, 2),
     'add_norm_b': (0, 0),
     'query_intensity_a': (1e-3,2),
@@ -32,19 +44,43 @@ bounds = {
     'target_intensity_b': (1e-3,2)
     }
 
-init_vals = {
-    'mult_a' : 0.001,
-    'mult_b': 1,
-    'dif_a': 0.001,
-    'dif_b':1,
-    'add_norm_b' : 0,
-    'target_intensity_a': 0.1,
-    'query_intensity_a': 0.1,
-    'target_intensity_b': 0.1,
-    'query_intensity_b': 0.1
+bounds_mult_norm = {
+    'mult_a': (1,1),
+    'mult_b': (1e-3, 2),
+    'dif_a':(0,0),
+    'dif_b': (0, 0),
+    'add_norm_b': (-2, 2),
+    'query_intensity_a': (1e-3,2),
+    'query_intensity_b': (1e-3,2),
+    'target_intensity_a': (1e-3,2),
+    'target_intensity_b': (1e-3,2)
     }
 
-n_tunasims_additional = 4
+bounds_dif_norm = {
+    'mult_a': (0,0),
+    'mult_b': (0, 0),
+    'dif_a':(-1,-1),
+    'dif_b': (1e-3, 2),
+    'add_norm_b': (-2, 2),
+    'query_intensity_a': (1e-3,2),
+    'query_intensity_b': (1e-3,2),
+    'target_intensity_a': (1e-3,2),
+    'target_intensity_b': (1e-3,2)
+    }
+
+init_vals = {
+    'mult_a' : 1,
+    'mult_b': 1,
+    'dif_a': 1,
+    'dif_b': 1,
+    'add_norm_b' : 0,
+    'target_intensity_a': 0.01,
+    'query_intensity_a': 0.01,
+    'target_intensity_b': 1,
+    'query_intensity_b': 1
+    }
+
+n_tunasims_additional = 8
 tunasims_n_iter = 5e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
@@ -53,22 +89,22 @@ learning_rate = 0.0005
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 4
 inference_chunk_size = 1e6
-n_inits = 5
+n_inits_per_bound = 5
+
+
+bounds_collection = {'bounds_mult' : bounds_mult,
+                     'bounds_dif' : bounds_dif,
+                     'bounds_mult_norm' : bounds_mult_norm,
+                     'bounds_dif_norm' : bounds_dif_norm
+                     }
 
 tunaSim_trainers = list()
-
-# tunaSim_trainers.append(baseShell(name = 'fidelity_base_tuna',
-#                                   sim_func = oldMetricEvaluator.fidelity_similarity,
-#                                   balance_column = tunaSim_balance_column,
-#                                   groupby_column = tunaSim_groupby_column))
-
-
 for i in range(n_tunasims_additional):
     
     tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i+1}',
                                 init_vals = init_vals,
-                                n_inits = n_inits,
-                                bounds = bounds,
+                                n_inits_per_bound = n_inits_per_bound,
+                                bounds = bounds_collection,
                                 max_iter = tunasims_n_iter,
                                 learning_rate = learning_rate,
                                 balance_column = tunaSim_balance_column,
@@ -107,12 +143,12 @@ l2_regs = [10, 20, 40, 80, 160]
 #we will start with default model here to evaluate pickup from hyperparam tuning
 query_adjustment_candidates = [gbc()]
 
-# for i in learning_rates:
-#     for j in max_iter:
-#         for k in max_leaf_nodes:
-#             for l in l2_regs:
+for i in learning_rates:
+    for j in max_iter:
+        for k in max_leaf_nodes:
+            for l in l2_regs:
 
-#                 query_adjustment_candidates.append(gbc(learning_rate = i,
-#                                                             max_iter = j,
-#                                                             max_leaf_nodes = k,
-#                                                             l2_regularization = l))
+                query_adjustment_candidates.append(gbc(learning_rate = i,
+                                                            max_iter = j,
+                                                            max_leaf_nodes = k,
+                                                            l2_regularization = l))

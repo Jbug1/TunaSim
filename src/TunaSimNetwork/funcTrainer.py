@@ -40,10 +40,10 @@ class tunaSimTrainer:
     def __init__(self,
             name: str,
             init_vals: dict = {},
-            n_inits: int = 1,
+            n_inits_per_bound: int = 1,
             learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
-            bounds: dict = None,
+            bounds_collection: list = None,
             learning_rate_scheduler: str = None,
             learning_beta: float = 0.5,
             ad_int: float = 0.8,
@@ -57,8 +57,8 @@ class tunaSimTrainer:
 
         self.name = name
         self.init_vals = init_vals
-        self.n_inits = n_inits
-        self.bounds = bounds
+        self.n_inits_per_bound = n_inits_per_bound
+        self.bounds_collection = bounds_collection
         self.max_iter = int(max_iter)
         self.n_iter = 0
         self.learning_rate = learning_rate
@@ -91,8 +91,6 @@ class tunaSimTrainer:
         
         self.init_vals = init_vals
 
-        self.bounds = [bounds[key] for key in self.init_vals]
-
     def map_to_minus_1(self, *args):
 
         return -1
@@ -111,53 +109,56 @@ class tunaSimTrainer:
         self.best_auc = 0
         self.initializations = list()
         self.trained_funcs = list()
-        for _ in range(self.n_inits):
 
-            train_data = train_data.sample(frac = 1)
+        for bounds_set_name, bounds_set in self.bounds_collection.items():
 
-            self.build_inds_dict(train_data)
+            for _ in range(self.n_inits_per_bound):
 
-            self.initializations.append(copy.deepcopy(self.init_vals))
+                train_data = train_data.sample(frac = 1)
 
-            #create first function to be fit
-            self.function = self.function_space(**self.init_vals)
+                self.build_inds_dict(train_data)
 
-            start = time.time()
+                self.initializations.append(copy.deepcopy(self.init_vals))
 
-            #start with the first init vals that are passed
-            self.stoch_descent(train_data)
+                #create first function to be fit
+                self.function = self.function_space(**self.init_vals)
 
-            #add the trained function to collector for future inspection
-            self.trained_funcs.append(copy.deepcopy(self.function))
+                start = time.time()
 
-            #if we are trying more than 1, we want to update init vals with random initialization
-            self.init_vals =  {key: np.random.uniform(self.bounds[i][0], self.bounds[i][1]) 
-                               for i, key 
-                               in list(enumerate(self.init_vals.keys()))}
-            
-            #add predictions and group by user provided columns
-            train_data['preds'] = self.function.predict_for_dataset(train_data)
-            tops = train_data.sort_values(by = self.groupby_column + ['preds'], ascending = False)
-            tops = tops.groupby(self.groupby_column).first()
+                #start with the first init vals that are passed
+                self.stoch_descent(train_data, [bounds_set[key] for key in self.init_vals])
 
-            #get the auc on train data for this trained function
-            try:
-                init_auc = roc_auc_score(tops['score'], tops['preds'])
+                #add the trained function to collector for future inspection
+                self.trained_funcs.append(copy.deepcopy(self.function))
 
-            except ValueError as err:
+                #if we are trying more than 1, we want to update init vals with random initialization
+                self.init_vals =  {key: np.random.uniform(bounds_set[i][0], bounds_set[i][1]) 
+                                for i, key 
+                                in list(enumerate(self.init_vals.keys()))}
+                
+                #add predictions and group by user provided columns
+                train_data['preds'] = self.function.predict_for_dataset(train_data)
+                tops = train_data.sort_values(by = self.groupby_column + ['preds'], ascending = False)
+                tops = tops.groupby(self.groupby_column).first()
 
-                init_auc = -1
-                self.log.info(f'failed to calculate AUROC: {err}')
+                #get the auc on train data for this trained function
+                try:
+                    init_auc = roc_auc_score(tops['score'], tops['preds'])
 
-            self.performance_by_initialization.append(init_auc)
+                except ValueError as err:
 
-            #if this is the best performer so far, retain it
-            if init_auc > self.best_auc:
+                    init_auc = -1
+                    self.log.info(f'failed to calculate AUROC: {err}')
 
-                self.best_auc = init_auc
-                self.final_function = copy.deepcopy(self.function)     
-            
-            self.log.info(f'trained function {_ + 1} in {round((time.time() - start) / 60,4)} minutes, AUC:{round(init_auc, 4)}')
+                self.performance_by_initialization.append(init_auc)
+
+                #if this is the best performer so far, retain it
+                if init_auc > self.best_auc:
+
+                    self.best_auc = init_auc
+                    self.final_function = copy.deepcopy(self.function)     
+                
+                self.log.info(f'trained function {_ + 1} with {bounds_set_name} in {round((time.time() - start) / 60,4)} minutes, AUC:{round(init_auc, 4)}')
 
         self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes, AUC:{round(self.best_auc, 4)}')
 
@@ -259,7 +260,7 @@ class tunaSimTrainer:
         return np.random.permutation(inds)[:1 + int(self.match_density_sampler() * len(inds))]
 
 
-    def stoch_descent(self, train_data):
+    def stoch_descent(self, train_data, bounds):
         """ 
         Implement gradient descent for model tuning
         func must take: match, query, target
@@ -274,7 +275,7 @@ class tunaSimTrainer:
             #update with the score of choice and funcOb's loss function
             score, pred_val = self.get_match_grad_components(sub)
 
-            self.step(score, pred_val)    
+            self.step(score, pred_val, bounds)    
 
             self.n_iter += 1
     
@@ -300,12 +301,12 @@ class tunaSimTrainer:
             
             return max(1e-7, self.learning_rates[param])
 
-    def step(self, score, pred_val):
+    def step(self, score, pred_val, bounds):
 
         #convert gradient of f^ to gradient of loss func
         loss_grad = square_loss_grad(pred_val, score)
         
-        for key, grad, bounds in zip(self.function.grad_names, self.function.grad_vals, self.bounds):
+        for key, grad, bounds in zip(self.function.grad_names, self.function.grad_vals, bounds):
 
             #chain rule to get gradient w.r.t loss func
             #use np.dot in order to accomodate vector and float vals

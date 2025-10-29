@@ -54,6 +54,8 @@ def main(config_path):
     ensemble_layer = layers.ensembleLayer(candidates = config.ensemble_candidates,
                                           selection_method = config.selection_method,
                                           data_column_str = 'tuna')
+
+    # ensemble_layer = layers.ensemble_shell()
     
     query_adjustment_layer = layers.groupAdjustmentLayer(candidates = config.query_adjustment_candidates,
                                                          selection_method = config.selection_method,

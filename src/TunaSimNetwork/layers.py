@@ -78,6 +78,22 @@ class ensembleLayer:
         return train, val
 
 
+class ensemble_shell(ensembleLayer):
+
+    def __init__(self):
+
+        super().__init__(candidates = [])
+
+    def fit(self):
+
+        pass
+
+    def predict(self, data):
+
+        data['preds'] = [1 for i in len(data)]
+
+        return data
+
 class groupAdjustmentLayer:
     """
     wrapper around ensemble layer, as the only difference is input transformation

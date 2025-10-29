@@ -71,7 +71,7 @@ class oldMetricEvaluator:
     @njit
     def squared_chord_similarity(p, q):
  
-        return 1 - np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2))
+        return 1 - np.sum(np.power(np.sqrt(p) - np.sqrt(q), 2)) / 2
 
     @staticmethod
     @njit
