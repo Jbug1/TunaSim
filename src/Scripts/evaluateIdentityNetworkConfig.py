@@ -1,4 +1,5 @@
 #config for evaluateIdentityNetwork.py
+from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
 log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_newmenthod'
@@ -35,3 +36,27 @@ network_performance_attribution = True
 if network_performance_attribution:
 
     write_intermediates = True
+
+#additional feature eval
+additional_feature_eval = True
+train_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod/intermediate_outputs'
+
+selection_method = 'top'
+learning_rates = [0.05, 0.1, 0.25, 0.5]
+max_leaf_nodes = [20, 31, 40, 80]
+max_iter = [100, 800]
+l2_regs = [10, 20, 40, 80, 160, 320]
+max_bins = [75, 150, 255]
+
+#we will start with default model here to evaluate pickup from hyperparam tuning
+ensemble_candidates = [gbc()]
+
+for i in learning_rates:
+    for j in max_iter:
+        for k in max_leaf_nodes:
+            for l in l2_regs:
+
+                ensemble_candidates.append(gbc(learning_rate = i,
+                                                max_iter = j,
+                                                max_leaf_nodes = k,
+                                                l2_regularization = l))

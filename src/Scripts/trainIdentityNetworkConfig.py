@@ -1,4 +1,4 @@
-#config file to pass all parameters onto script
+#config ffor trainIdentityNetwork.py
 from TunaSimNetwork.funcTrainer import tunaSimTrainer, baseShell
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 from TunaSimNetwork.oldMetrics import oldMetricEvaluator
@@ -9,9 +9,9 @@ log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_newmethod'
 results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod'
 
 #datasetBuilder params
-build_datasets = False
+build_datasets = True
 dataset_names = ['train', 'val_1', 'test']
-dataset_max_sizes = [1e7, 1e7, 1e7]
+dataset_max_sizes = [1e5, 1e5, 1e5]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec_clean_2.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec_clean_2.pkl'
 ppm_match_window = 10
@@ -80,7 +80,7 @@ init_vals = {
     'query_intensity_b': 1
     }
 
-n_tunasims_additional = 1
+n_tunasims_additional = 0
 tunasims_n_iter = 5e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
@@ -89,19 +89,31 @@ learning_rate = 0.0005
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 4
 inference_chunk_size = 1e6
-n_inits_per_bound = 5
+n_inits_per_bound = 10
 
 
-bounds_collection = {#'bounds_mult' : bounds_mult,
+bounds_collection = {'bounds_mult' : bounds_mult,
                      'bounds_dif' : bounds_dif}
 
 tunaSim_trainers = list()
 
-tunaSim_trainers.append(baseShell('fideilty_base',
-                                  oldMetricEvaluator.fidelity_similarity,
-                                  balance_column = tunaSim_balance_column,
-                                    groupby_column = tunaSim_groupby_column
-                                  ))
+# tunaSim_trainers.append(baseShell('tuna_fidelity_base',
+#                                   oldMetricEvaluator.fidelity_similarity,
+#                                   balance_column = tunaSim_balance_column,
+#                                     groupby_column = tunaSim_groupby_column
+#                                   ))
+
+# tunaSim_trainers.append(baseShell('tuna_sqc_base',
+#                                   oldMetricEvaluator.squared_chord_similarity,
+#                                   balance_column = tunaSim_balance_column,
+#                                     groupby_column = tunaSim_groupby_column
+#                                   ))
+
+# tunaSim_trainers.append(baseShell('tuna_harmonic_base',
+#                                   oldMetricEvaluator.harmonic_mean_similarity,
+#                                   balance_column = tunaSim_balance_column,
+#                                     groupby_column = tunaSim_groupby_column
+#                                   ))
 
 for i in range(n_tunasims_additional):
     

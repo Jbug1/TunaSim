@@ -111,13 +111,36 @@ def main(config_path):
 
         logger.info('evaluated reweighted original metrics')
         
-        performance = pd.concat((performance, network_performance))
+        network_performance = pd.concat((performance, network_performance))
         
-        performance.to_csv(f'{config.results_directory}/performance.csv', index = False)
+    if config.additional_feature_eval:
 
-    else:
+        #read tuna outputs and reduce to tunasims and label
+        ensemble_input = pd.read_csv(f'{config.train_directory}/tunasims_top_train.csv')
+        ensemble_input = ensemble_input[[i for i in ensemble_input.columns if 'tuna' in i or 'score' in i]]
 
-        network_performance.to_csv(f'{config.results_directory}/performance.csv', index = False)
+        test_data = pd.read_csv(f'{config.results_directory}/tunaSim_output.csv')
+        test_data = test_data[[i for i in test_data.columns if 'tuna' in i or 'score' in i]]
+
+        all_performances = list()
+        for i in range(len(ensemble_input.columns) - 1):
+
+            sub = ensemble_input.iloc[:, i:-1]
+            sub_test = test_data.iloc[:, i:-1]
+
+            sub_performances = list()
+            for model in config.ensemble_candidates:
+
+                model.fit(sub, ensemble_input.iloc[:,-1])
+                sub_performances.append((f'{i}_{str(model)}', round(roc_auc_score(test_data.iloc[:,-1], model.predict_proba(sub_test)[:,1]),5)))
+
+            all_performances = all_performances + sub_performances
+            logger.info(f'completed all ensemble candidates for {i}')
+
+        all_performances = pd.DataFrame(all_performances, columns = ['name', 'performance'])
+        network_performance = pd.concat((network_performance, all_performances))
+
+    network_performance.to_csv(f'{config.results_directory}/performance.csv', index = False)
 
 
 if __name__ == '__main__':

@@ -353,8 +353,8 @@ class tunaSimLayer:
     def fit(self, dataset):
 
         #fit on remaining train data
-        trainer.fit(dataset)
-        trainer.trained = True
+        self.trainers[0].fit(dataset)
+        self.trainers[0].trained = True
 
         #fit and update train performance for each round of residuals
         for trainer in self.trainers[1:]:
