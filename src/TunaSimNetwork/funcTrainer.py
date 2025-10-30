@@ -112,6 +112,8 @@ class tunaSimTrainer:
 
         for bounds_set_name, bounds_set in self.bounds_collection.items():
 
+            bounds_set = [bounds_set[key] for key in self.init_vals]
+
             for _ in range(self.n_inits_per_bound):
 
                 train_data = train_data.sample(frac = 1)
@@ -126,7 +128,7 @@ class tunaSimTrainer:
                 start = time.time()
 
                 #start with the first init vals that are passed
-                self.stoch_descent(train_data, [bounds_set[key] for key in self.init_vals])
+                self.stoch_descent(train_data, bounds_set)
 
                 #add the trained function to collector for future inspection
                 self.trained_funcs.append(copy.deepcopy(self.function))

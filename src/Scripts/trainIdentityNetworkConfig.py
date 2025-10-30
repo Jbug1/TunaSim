@@ -80,7 +80,7 @@ init_vals = {
     'query_intensity_b': 1
     }
 
-n_tunasims_additional = 8
+n_tunasims_additional = 1
 tunasims_n_iter = 5e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
@@ -92,19 +92,23 @@ inference_chunk_size = 1e6
 n_inits_per_bound = 5
 
 
-bounds_collection = {'bounds_mult' : bounds_mult,
-                     'bounds_dif' : bounds_dif,
-                     'bounds_mult_norm' : bounds_mult_norm,
-                     'bounds_dif_norm' : bounds_dif_norm
-                     }
+bounds_collection = {#'bounds_mult' : bounds_mult,
+                     'bounds_dif' : bounds_dif}
 
 tunaSim_trainers = list()
+
+tunaSim_trainers.append(baseShell('fideilty_base',
+                                  oldMetricEvaluator.fidelity_similarity,
+                                  balance_column = tunaSim_balance_column,
+                                    groupby_column = tunaSim_groupby_column
+                                  ))
+
 for i in range(n_tunasims_additional):
     
     tunaSim_trainers.append(tunaSimTrainer(f'tuna_{i+1}',
                                 init_vals = init_vals,
                                 n_inits_per_bound = n_inits_per_bound,
-                                bounds = bounds_collection,
+                                bounds_collection = bounds_collection,
                                 max_iter = tunasims_n_iter,
                                 learning_rate = learning_rate,
                                 balance_column = tunaSim_balance_column,

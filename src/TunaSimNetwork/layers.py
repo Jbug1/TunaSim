@@ -352,15 +352,19 @@ class tunaSimLayer:
 
     def fit(self, dataset):
 
+        #fit on remaining train data
+        trainer.fit(dataset)
+        trainer.trained = True
+
         #fit and update train performance for each round of residuals
-        for trainer in self.trainers:
+        for trainer in self.trainers[1:]:
+
+            #downsample from train before fitting next model
+            dataset = self.residual_downsample_tunasims(dataset, trainer)
 
             #fit on remaining train data
             trainer.fit(dataset)
             trainer.trained = True
-
-            #downsample from train before fitting next model
-            dataset = self.residual_downsample_tunasims(dataset, trainer)
 
         self.trainers = [trainer for trainer in self.trainers if trainer.trained == True]
 
