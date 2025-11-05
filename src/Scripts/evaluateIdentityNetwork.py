@@ -123,10 +123,10 @@ def main(config_path):
         test_data = test_data[[i for i in test_data.columns if 'tuna' in i or 'score' in i]]
 
         all_performances = list()
-        for i in range(len(ensemble_input.columns) - 1):
+        for i in range(1, len(ensemble_input.columns) - 1):
 
-            sub = ensemble_input.iloc[:, i:-1]
-            sub_test = test_data.iloc[:, i:-1]
+            sub = ensemble_input.iloc[:, :i]
+            sub_test = test_data.iloc[:, :i]
 
             sub_performances = list()
             for model in config.ensemble_candidates:

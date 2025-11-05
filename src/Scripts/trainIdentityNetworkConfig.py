@@ -2,16 +2,17 @@
 from TunaSimNetwork.funcTrainer import tunaSimTrainer, baseShell
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 from TunaSimNetwork.oldMetrics import oldMetricEvaluator
+from functools import partial
 import numpy as np
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_newmethod'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_metlin_newmethod'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metlin_newmethod'
 
 #datasetBuilder params
-build_datasets = True
+build_datasets = False
 dataset_names = ['train', 'val_1', 'test']
-dataset_max_sizes = [1e5, 1e5, 1e5]
+dataset_max_sizes = [1e7, 1e7, 1e7]
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec_clean_2.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec_clean_2.pkl'
 ppm_match_window = 10
@@ -80,7 +81,7 @@ init_vals = {
     'query_intensity_b': 1
     }
 
-n_tunasims_additional = 0
+n_tunasims_additional = 4
 tunasims_n_iter = 5e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
@@ -90,6 +91,8 @@ intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 4
 inference_chunk_size = 1e6
 n_inits_per_bound = 10
+
+match_density_sampler = partial(np.random.beta, a = 1, b = 2)
 
 
 bounds_collection = {'bounds_mult' : bounds_mult,
@@ -124,8 +127,8 @@ for i in range(n_tunasims_additional):
                                 max_iter = tunasims_n_iter,
                                 learning_rate = learning_rate,
                                 balance_column = tunaSim_balance_column,
-                                groupby_column = tunaSim_groupby_column))
-                                #match_density_sampler = match_density_sampler))
+                                groupby_column = tunaSim_groupby_column,
+                                match_density_sampler = match_density_sampler))
 
 ########################################################################
 #similarity aggreagtion layer params

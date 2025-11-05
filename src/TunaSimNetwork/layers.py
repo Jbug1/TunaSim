@@ -359,19 +359,44 @@ class tunaSimLayer:
         #fit and update train performance for each round of residuals
         for trainer in self.trainers[1:]:
 
-            #downsample from train before fitting next model
-            dataset = self.residual_downsample_tunasims(dataset, trainer)
-
             #fit on remaining train data
             trainer.fit(dataset)
             trainer.trained = True
 
+            #downsample from train before fitting next model
+            #Jonah remember this has been moved out of order
+            dataset = self.residual_downsample_tunasims(dataset, trainer)
+
         self.trainers = [trainer for trainer in self.trainers if trainer.trained == True]
 
-    def predict(self, dataset):
+    def grouped_downsample(self, dataset, downsample_proportion):
+        """ 
+        retain a subset of the dataset as grouped by the groupby column of interest
+        """
+
+        if downsample_proportion == 1:
+            return dataset
+        
+        output_inds = list()
+        dataset['id'] = [i for i in range(dataset.shape[0])]
+
+        #for each group, reatin some % of indices
+        for _, inds in dataset.groupby(self.trainers[0].groupby_column):
+
+            output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
+            
+        dataset = dataset.iloc[np.concatenate(output_inds)]
+
+        #make sure to leave newly added id column out of returned result
+        return dataset.groupby(self.trainers[0].groupby_column).max().iloc[:,:-1]
+
+    def predict(self, dataset, downsample_proportion):
         """ 
         generate predictions on full datasets
         """
+
+        #downsample from dataset if necessary
+        dataset = self.grouped_downsample(dataset, downsample_proportion)
 
         #to minimize params, we will infer the groupby column from trainers
         groupby_column = self.trainers[0].groupby_column

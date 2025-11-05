@@ -12,7 +12,7 @@ network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod
 dataset_names = ['metlin_test']
 
 #optional dataset building params
-build_datasets = False
+build_datasets = True
 
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_noprec_clean.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/metlin_noprec_clean.pkl'
