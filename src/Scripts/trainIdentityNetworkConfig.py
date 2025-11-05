@@ -45,30 +45,6 @@ bounds_dif = {
     'target_intensity_b': (1e-3,2)
     }
 
-bounds_mult_norm = {
-    'mult_a': (1,1),
-    'mult_b': (1e-3, 2),
-    'dif_a':(0,0),
-    'dif_b': (0, 0),
-    'add_norm_b': (-2, 2),
-    'query_intensity_a': (1e-3,2),
-    'query_intensity_b': (1e-3,2),
-    'target_intensity_a': (1e-3,2),
-    'target_intensity_b': (1e-3,2)
-    }
-
-bounds_dif_norm = {
-    'mult_a': (0,0),
-    'mult_b': (0, 0),
-    'dif_a':(-1,-1),
-    'dif_b': (1e-3, 2),
-    'add_norm_b': (-2, 2),
-    'query_intensity_a': (1e-3,2),
-    'query_intensity_b': (1e-3,2),
-    'target_intensity_a': (1e-3,2),
-    'target_intensity_b': (1e-3,2)
-    }
-
 init_vals = {
     'mult_a' : 1,
     'mult_b': 1,
@@ -81,7 +57,7 @@ init_vals = {
     'query_intensity_b': 1
     }
 
-n_tunasims_additional = 4
+n_tunasims_additional = 15
 tunasims_n_iter = 5e5
 residual_downsample_percentile = 25
 tunaSim_balance_column = 'score'
@@ -92,6 +68,10 @@ inference_jobs = 4
 inference_chunk_size = 1e6
 n_inits_per_bound = 10
 
+##############################################################
+#network params 
+train_match_proportion = 0.5
+
 match_density_sampler = partial(np.random.beta, a = 1, b = 2)
 
 
@@ -100,23 +80,10 @@ bounds_collection = {'bounds_mult' : bounds_mult,
 
 tunaSim_trainers = list()
 
-# tunaSim_trainers.append(baseShell('tuna_fidelity_base',
-#                                   oldMetricEvaluator.fidelity_similarity,
-#                                   balance_column = tunaSim_balance_column,
-#                                     groupby_column = tunaSim_groupby_column
-#                                   ))
-
-# tunaSim_trainers.append(baseShell('tuna_sqc_base',
-#                                   oldMetricEvaluator.squared_chord_similarity,
-#                                   balance_column = tunaSim_balance_column,
-#                                     groupby_column = tunaSim_groupby_column
-#                                   ))
-
-# tunaSim_trainers.append(baseShell('tuna_harmonic_base',
-#                                   oldMetricEvaluator.harmonic_mean_similarity,
-#                                   balance_column = tunaSim_balance_column,
-#                                     groupby_column = tunaSim_groupby_column
-#                                   ))
+tunaSim_trainers.append(baseShell('tuna_fidelity_base',
+                                  oldMetricEvaluator.fidelity_similarity,
+                                  balance_column = tunaSim_balance_column,
+                                    groupby_column = tunaSim_groupby_column))
 
 for i in range(n_tunasims_additional):
     
@@ -127,8 +94,7 @@ for i in range(n_tunasims_additional):
                                 max_iter = tunasims_n_iter,
                                 learning_rate = learning_rate,
                                 balance_column = tunaSim_balance_column,
-                                groupby_column = tunaSim_groupby_column,
-                                match_density_sampler = match_density_sampler))
+                                groupby_column = tunaSim_groupby_column))
 
 ########################################################################
 #similarity aggreagtion layer params
