@@ -6,15 +6,15 @@ from functools import partial
 import numpy as np
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_metlin_newmethod'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metlin_newmethod'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_msg_3'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_msg_3'
 
 #datasetBuilder params
-build_datasets = False
-dataset_names = ['train', 'val_1', 'test']
+build_datasets = True
+dataset_names = ['train', 'val_1', 'val_2']
 dataset_max_sizes = [1e7, 1e7, 1e7]
-query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec_clean_2.pkl'
-target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_train_noprec_clean_2.pkl'
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/ms_gym_train_noprec_clean_2.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/ms_gym_train_noprec_clean_2.pkl'
 ppm_match_window = 10
 identity_column = 'inchi_base'
 tolerance = 0.01
@@ -57,20 +57,21 @@ init_vals = {
     'query_intensity_b': 1
     }
 
-n_tunasims_additional = 15
+n_tunasims_additional = 7
 tunasims_n_iter = 5e5
-residual_downsample_percentile = 25
+residual_downsample_percentile = 50
 tunaSim_balance_column = 'score'
 tunaSim_groupby_column = ['queryID', 'inchi_base']
 learning_rate = 0.0005
 intermediate_outputs_path = f'{results_directory}/intermediate_outputs'
 inference_jobs = 4
 inference_chunk_size = 1e6
-n_inits_per_bound = 10
+n_inits_per_bound = 5
 
 ##############################################################
 #network params 
 train_match_proportion = 0.5
+val_match_proportion = 0.5
 
 match_density_sampler = partial(np.random.beta, a = 1, b = 2)
 
@@ -95,6 +96,14 @@ for i in range(n_tunasims_additional):
                                 learning_rate = learning_rate,
                                 balance_column = tunaSim_balance_column,
                                 groupby_column = tunaSim_groupby_column))
+
+# import pickle
+
+# with open ('/Users/jonahpoczobutt/projects/TunaRes/network_results/network.pkl', 'rb') as handle:
+
+#     network_old = pickle.load(handle)
+
+# tunaSim_trainers = network_old.tunaSim_layer.trainers
 
 ########################################################################
 #similarity aggreagtion layer params

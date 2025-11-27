@@ -2,20 +2,20 @@
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_newmenthod'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_test_2'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_test_2'
 
-#path to network pickle file
-network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod/network.pkl'
+#path to network pickle files
+network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_msg_2/network.pkl'
 
 #mandatory dataset params
 dataset_names = ['test']
 
 #optional dataset building params
-build_datasets = False
+build_datasets = True
 
-query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_metlin_overlap_noprec.pkl'
-target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/nist23_metlin_overlap_noprec.pkl'
+query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/ms_gym_val_noprec_clean_2.pkl'
+target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/ms_gym_val_noprec_clean_2.pkl'
 dataset_max_sizes = [1e7]
 
 ppm_match_window = 10
@@ -26,7 +26,7 @@ identity_column = 'inchi_base'
 
 evaluate_old_metrics = True
 
-matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod'
+matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_msg_2'
 write_intermediates = True
 reweighted = True
 
@@ -38,8 +38,8 @@ if network_performance_attribution:
     write_intermediates = True
 
 #additional feature eval
-additional_feature_eval = True
-train_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod/intermediate_outputs'
+additional_feature_eval = False
+train_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results/intermediate_outputs'
 
 selection_method = 'top'
 learning_rates = [0.05, 0.1, 0.25, 0.5]

@@ -352,19 +352,14 @@ class tunaSimLayer:
 
     def fit(self, dataset):
 
-        #fit on remaining train data
-        self.trainers[0].fit(dataset)
-        self.trainers[0].trained = True
-
         #fit and update train performance for each round of residuals
-        for trainer in self.trainers[1:]:
+        for trainer in self.trainers:
 
             #fit on remaining train data
             trainer.fit(dataset)
             trainer.trained = True
 
             #downsample from train before fitting next model
-            #Jonah remember this has been moved out of order
             dataset = self.residual_downsample_tunasims(dataset, trainer)
 
         self.trainers = [trainer for trainer in self.trainers if trainer.trained == True]
@@ -385,12 +380,14 @@ class tunaSimLayer:
 
             output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
             
-        dataset = dataset.iloc[np.concatenate(output_inds)]
+        dataset = dataset.iloc[np.concatenate(output_inds),:-1]
+
+        dataset.to_pickle('/Users/jonahpoczobutt/projects/TunaRes/network_results/downsampled_data.pkl')
 
         #make sure to leave newly added id column out of returned result
-        return dataset.groupby(self.trainers[0].groupby_column).max().iloc[:,:-1]
+        return dataset
 
-    def predict(self, dataset, downsample_proportion):
+    def predict(self, dataset, downsample_proportion = 1):
         """ 
         generate predictions on full datasets
         """

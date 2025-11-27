@@ -66,6 +66,7 @@ def main(config_path):
 
     int_results = list()
     int_names = list()
+    int_tops = list()
 
     int_results.append(round(roc_auc_score(preds['score'], preds['preds']),5))
     int_names.append('full_network')

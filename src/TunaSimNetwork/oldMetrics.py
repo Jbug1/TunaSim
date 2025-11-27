@@ -119,7 +119,6 @@ class oldMetricEvaluator:
         results.to_csv(f'{self.intermediates_path}/old_metrics_weighted.csv')
         performance.to_csv(f'{self.performance_path}/old_metrics_weighted.csv')
 
-        
     def get_evals(self, dataset, reweighted = False):
 
         queries = dataset['query'].to_numpy()

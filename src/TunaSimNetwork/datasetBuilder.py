@@ -112,7 +112,7 @@ class trainSetBuilder:
         
     def create_match_datasets(self):
 
-        for dataset in [i.split('.')[0] for i in os.listdir(f'{self.outputs_directory}/raw/query')]:
+        for dataset in self.dataset_names:
          
             query = pd.read_pickle(f'{self.outputs_directory}/raw/query/{dataset}.pkl')
             target = pd.read_pickle(f'{self.outputs_directory}/raw/target/{dataset}.pkl')
@@ -242,7 +242,7 @@ class trainSetBuilder:
                     query_df['spectrum'],
                     query_df[self.identity_column])
         
-        for i, precursor, mode, queryID, spectrum, identity in rows:
+        for _, precursor, mode, queryID, spectrum, identity in rows:
 
             seen_ += 1
             query_identities_set.add(identity)
@@ -372,6 +372,10 @@ class trainSetBuilder:
         Returns:
             intensities_a, intensities_b: List of peak intensities where intensities_a[i] is matched to intensities_b[i]
         """
+
+        #ensure that all intensities are > 0 first
+        spec_a = spec_a[spec_a[:,1] > 0]
+        spec_b = spec_b[spec_b[:,1] > 0]
 
         mz_a, int_a = spec_a[:, 0], spec_a[:, 1]
         mz_b, int_b = spec_b[:, 0], spec_b[:, 1]

@@ -69,7 +69,9 @@ def main(config_path):
                                    intermediate_outputs_path = f'{config.results_directory}/intermediate_outputs',
                                    tunaSim_layer = tunasim_layer,
                                    ensemble_layer = ensemble_layer,
-                                   query_adjustment_layer = query_adjustment_layer)
+                                   query_adjustment_layer = query_adjustment_layer,
+                                   train_match_proportion = config.train_match_proportion,
+                                   val_match_proportion = config.val_match_proportion)
     
     try:
         network.fit()

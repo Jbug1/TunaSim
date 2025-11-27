@@ -2,11 +2,11 @@
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_metlin_newmethod'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metlin_newmethod'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_metlin'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_metlin'
 
 #path to network pickle file
-network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod/network.pkl'
+network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results/network.pkl'
 
 #mandatory dataset params
 dataset_names = ['metlin_test']
@@ -38,8 +38,8 @@ if network_performance_attribution:
     write_intermediates = True
 
 #additional feature eval
-additional_feature_eval = True
-train_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_newmethod/intermediate_outputs'
+additional_feature_eval = False
+train_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results/intermediate_outputs'
 
 selection_method = 'top'
 learning_rates = [0.05, 0.1, 0.25, 0.5]

@@ -47,7 +47,7 @@ class IdentityMatchNetwork:
         #create tunasim preds
         self.log.info('creating train tunasim predictions')
         train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path), 
-                                                         downsample = self.train_match_proportion)
+                                                         downsample_proportion = self.train_match_proportion)
         train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv', index = False)
 
         self.log.info('creating val_1 tunasim predicitons')
@@ -72,7 +72,7 @@ class IdentityMatchNetwork:
         #create val 2 aggregated preds
         if self.query_adjustment_layer is not None:
 
-            self.log.info('creating val_2 tunasim predictions ')
+            self.log.info('creating val_2 tunasim predictions')
             val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
             val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
 
