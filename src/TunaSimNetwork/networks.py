@@ -17,7 +17,8 @@ class IdentityMatchNetwork:
                  tunaSim_layer,
                  ensemble_layer,
                  query_adjustment_layer,
-                 train_match_proportion: float = 1.0
+                 train_match_proportion: float = 1.0,
+                 val_match_proportion: float = 1.0
                  ):
         
         self.train_path = train_path
@@ -28,6 +29,7 @@ class IdentityMatchNetwork:
         self.ensemble_layer = ensemble_layer
         self.query_adjustment_layer = query_adjustment_layer
         self.train_match_proportion = train_match_proportion
+        self.val_match_proportion = val_match_proportion
 
         makedirs(self.intermediate_outputs_path, exist_ok = True)
         
@@ -48,10 +50,13 @@ class IdentityMatchNetwork:
         self.log.info('creating train tunasim predictions')
         train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path), 
                                                          downsample_proportion = self.train_match_proportion)
+        
         train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv', index = False)
 
         self.log.info('creating val_1 tunasim predicitons')
-        val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path))
+        val_1_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_1_path),
+                                                         downsample_proportion = self.val_match_proportion)
+        
         val_1_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv', index = False)
 
         #select a tunasim aggregator from among candidates

@@ -2,17 +2,17 @@
 from sklearn.ensemble import HistGradientBoostingClassifier as gbc
 
 #logging
-log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_test_2'
-results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_test_2'
+log_path = '/Users/jonahpoczobutt/projects/TunaRes/network_logs_val_transfer_2'
+results_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_transfer_2'
 
 #path to network pickle files
-network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results_msg_2/network.pkl'
+network_path = '/Users/jonahpoczobutt/projects/TunaRes/network_results/network.pkl'
 
 #mandatory dataset params
-dataset_names = ['test']
+dataset_names = ['train']
 
 #optional dataset building params
-build_datasets = True
+build_datasets = False
 
 query_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/ms_gym_val_noprec_clean_2.pkl'
 target_input_path = '/Users/jonahpoczobutt/projects/raw_data/db_csvs/ms_gym_val_noprec_clean_2.pkl'
@@ -26,7 +26,7 @@ identity_column = 'inchi_base'
 
 evaluate_old_metrics = True
 
-matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_msg_2'
+matches_input_directory = '/Users/jonahpoczobutt/projects/TunaRes/network_results_msg_3'
 write_intermediates = True
 reweighted = True
 

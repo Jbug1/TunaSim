@@ -44,14 +44,8 @@ class tunaSimTrainer:
             learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
             bounds_collection: list = None,
-            learning_rate_scheduler: str = None,
-            learning_beta: float = 0.5,
-            ad_int: float = 0.8,
-            ad_slope: float  = 0.3,
-            scale_holdover_vals: int = 2,
             groupby_column: str = None,
-            balance_column: str = None,
-            match_density_sampler: callable = base_density_sampler):
+            balance_column: str = None):
         
         self.function_space = tunaSim
 
@@ -62,34 +56,16 @@ class tunaSimTrainer:
         self.max_iter = int(max_iter)
         self.n_iter = 0
         self.learning_rate = learning_rate
-        self.learning_rate_scheduler = learning_rate_scheduler
-        self.learning_beta = learning_beta
-        self.ad_int = ad_int
-        self.ad_slope = ad_slope
-        self.scale_holdover_vals = scale_holdover_vals
         self.groupby_column = groupby_column
         self.balance_column = balance_column
-        self.match_density_sampler = match_density_sampler
         self.trained = False
-
-        self.final_function = None
 
         self.balance_flag = 0
 
         self.log = getLogger(__name__)
-
-        #set scheduling dictionaries
-        self.accumulated_gradients = {key: 0 for key in self.init_vals}
-        self.accumulated_scales = {key: 0 for key in self.init_vals}
-        self.scale_holdovers = {key: deque([1 for i in range(self.scale_holdover_vals)]) for key in self.init_vals}
-
-        #we will start squared accumulated with large value for small steps
-        self.squared_accumulated = {key: 1 for key in self.init_vals.keys()}
-
-        #grad directions begins at zero, signifying a change in neither direction
-        self.accumulated_directions = {key: 0 for key in self.init_vals.keys()}
         
         self.init_vals = init_vals
+        self.final_function = None
 
     def map_to_minus_1(self, *args):
 
@@ -280,28 +256,6 @@ class tunaSimTrainer:
             self.step(score, pred_val, bounds)    
 
             self.n_iter += 1
-    
-    def calculate_learning_rate(self, param, grad):
-
-        if self.learning_rate_scheduler is None:
-
-            return  self.learning_rates[param]
-
-        elif self.learning_rate_scheduler == 'sag':
-
-            #add scale contribution to holdover
-            self.scale_holdovers[param].append(abs(grad))
-
-            #use the most recent grad to get exp decaying net gradient
-            self.accumulated_gradients[param] = self.learning_beta * self.accumulated_gradients[param] + (1 - self.learning_beta) * grad
-
-            #get accumulated scale with the popped holdover value
-            self.accumulated_scales[param] = self.accumulated_scales[param] * self.learning_beta + self.scale_holdovers[param].popleft() * (1 - self.learning_beta)
-
-            #update the learning rate
-            self.learning_rates[param] = self.learning_rates[param] * (self.ad_int + self.ad_slope * abs(self.accumulated_gradients[param]) / self.accumulated_scales[param])
-            
-            return max(1e-7, self.learning_rates[param])
 
     def step(self, score, pred_val, bounds):
 
