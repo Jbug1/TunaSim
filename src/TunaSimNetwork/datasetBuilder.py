@@ -2,6 +2,7 @@
 # this should include functions for reading in msps and cleaning/create sim datasets
 import pandas as pd
 import numpy as np
+from numpy.typing import NDarray
 import os
 import time
 import bisect
@@ -409,4 +410,56 @@ class trainSetBuilder:
         
         
         return combined_spec[:unmatched_count, 0], combined_spec[:unmatched_count, 1]
+
+
+class specCleaner:
+
+    def __init__(self,
+                 noise_threshold: float = 0.01,
+                 precursor_removal: float = 1.0,
+                 deisotoping_gaps: List[float] = [1.003355],
+                 deisotoping_threshold: float = 0.005,
+                 precursor_window: float = 1):
+        
+        self.noise_threshold = noise_threshold
+        self.precursor_removal = precursor_removal
+        self.deisotoping_gaps = deisotoping_gaps
+        self.deisotoping_threshold = deisotoping_threshold
+        self.precursor_window = precursor_window
+
+    def clean_spectra(self,
+                      raw_spectra: List,
+                      precursors: List) -> List:
+        
+        output_specs = list()
+        for spec, prec in zip(raw_spectra, precursors):
+
+            output_specs.append(self.clean_spectrum(spec, prec))
+
+        return output_specs
+
+    @njit
+    def clean_spectrum(raw_spectrum: NDarray, 
+                      precursor_mz: float,
+                      precursor_window,
+                      ) -> NDarray:
+        """
+        
+        """
+
+        
+
+        #precursor removal
+        spec = spec[spec[:,0] < prec - self.precursor_window]
+
+        #deisotoping
+        for isotope_gap in self.deisotoping_gaps:
+
+            
+
+        #noise peak clipping
+        spec = spec[np.where(spec[:,1] > np.max(spec[:,1]) * self.noise_threshold)]
+
+        #renormalize
+        spec[:,1] = spec[:,1] / np.sum(spec[:,1])
 
