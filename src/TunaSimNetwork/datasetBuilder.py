@@ -2,7 +2,7 @@
 # this should include functions for reading in msps and cleaning/create sim datasets
 import pandas as pd
 import numpy as np
-from numpy.typing import NDarray
+from numpy.typing import NDArray
 import os
 import time
 import bisect
@@ -374,6 +374,10 @@ class trainSetBuilder:
             intensities_a, intensities_b: List of peak intensities where intensities_a[i] is matched to intensities_b[i]
         """
 
+        #check that specs are not empty
+        if spec_a.size == 0 or spec_b.size == 0:
+            return np.array([]), np.array([])
+
         #ensure that all intensities are > 0 first
         spec_a = spec_a[spec_a[:,1] > 0]
         spec_b = spec_b[spec_b[:,1] > 0]
@@ -417,19 +421,19 @@ class specCleaner:
     def __init__(self,
                  noise_threshold: float = 0.01,
                  precursor_removal: float = 1.0,
-                 deisotoping_gaps: List[float] = [1.003355],
-                 deisotoping_threshold: float = 0.005,
+                 deisotoping_gaps: list[float] = [1.003355],
+                 isotope_mz_tolerance: float = 0.005,
                  precursor_window: float = 1):
         
         self.noise_threshold = noise_threshold
         self.precursor_removal = precursor_removal
         self.deisotoping_gaps = deisotoping_gaps
-        self.deisotoping_threshold = deisotoping_threshold
+        self.isotope_mz_tolerance = isotope_mz_tolerance
         self.precursor_window = precursor_window
 
     def clean_spectra(self,
-                      raw_spectra: List,
-                      precursors: List) -> List:
+                      raw_spectra: list,
+                      precursors: list) -> list:
         
         output_specs = list()
         for spec, prec in zip(raw_spectra, precursors):
@@ -437,29 +441,84 @@ class specCleaner:
             output_specs.append(self.clean_spectrum(spec, prec))
 
         return output_specs
-
+    
+    @staticmethod
     @njit
-    def clean_spectrum(raw_spectrum: NDarray, 
-                      precursor_mz: float,
-                      precursor_window,
-                      ) -> NDarray:
+    def consolidate_isotopic_peaks(spec: NDArray, 
+                                   gap: float, 
+                                   mz_tolerance: float) -> NDArray:
+        """ 
+        consolidates intensities of isotopic peaks at the monoisotopic (most intense) mz
         """
-        
-        """
+        #create output placeholder
+        output = np.zeros(spec.shape)
 
-        
+        i = 0
+        j = 1
+
+        while j < spec.shape[0]:
+
+            #jth value is below minimum
+            if spec[i,0] + gap - mz_tolerance > spec[j,0]:
+                j += 1
+
+            #jth value is below maximum
+            elif spec[i,0] + gap + mz_tolerance > spec[j,0]:
+
+                #assign combined intensity to monoisotopic peak
+                #ith value is monoisotopic
+                if spec[i,1] > spec[j,1]:
+                    output[i, 0] = spec[i,0]
+                    output[i, 1] = spec[i,1] + spec[j,1]
+
+                #jth value is monoisotopic...be sure to set ith index to 0 for mz and int
+                else:
+                    output[j, 0] = spec[j,0]
+                    output[j, 1] = spec[j,1] + spec[j,1]
+
+                    #if ith index was previously monoiso we dont want to double count it
+                    output[i, 0] = 0
+                    output[i, 1] = 0
+
+                #increment only j in case another peak falls within the window
+                j += 1
+
+            #jth value is above max value for consolidation
+            else:
+
+                output[i] = spec[i]
+                i += 1
+
+        #once j hits the end of the spec, there may be remaining peaks on the i index to add
+        while i < spec.shape[0]:
+
+            output[i] = spec[i]
+            
+            i += 1
+
+        #return only the necessary indices (those which have non zero values)
+        return output[output[:,0] > 0]
+
+    def clean_spectrum(self,
+                       spec: NDArray, 
+                       precursor_mz: float) -> NDArray:
+        """
+        runs through basic cleaning steps and calls deisotoping protocol
+        """
 
         #precursor removal
-        spec = spec[spec[:,0] < prec - self.precursor_window]
+        spec = spec[spec[:,0] < precursor_mz - self.precursor_window]
 
         #deisotoping
         for isotope_gap in self.deisotoping_gaps:
-
-            
+        
+            self.consolidate_isotopic_peaks(spec, isotope_gap, self.isotope_mz_tolerance)
 
         #noise peak clipping
-        spec = spec[np.where(spec[:,1] > np.max(spec[:,1]) * self.noise_threshold)]
+        spec = spec[spec[:,1] > np.max(spec[:,1]) * self.noise_threshold]
 
         #renormalize
         spec[:,1] = spec[:,1] / np.sum(spec[:,1])
+
+        return spec
 
