@@ -295,11 +295,11 @@ class TestDeisotoping:
 
         cleaner = specCleaner()
 
-        input = np.array([], dtype = np.float64)
+        input = np.array([[]], dtype = np.float64)
 
         output = cleaner.consolidate_isotopic_peaks(input,
                                                     1.003355,
-                                                    0.005)
+                                                    0.001)
 
         assert output.size == 0
 
@@ -319,7 +319,9 @@ class TestDeisotoping:
 
         output = cleaner.consolidate_isotopic_peaks(input,
                                                     1.003355,
-                                                    0.005)
+                                                    0.001)
+        
+        print(output)
 
         answer = np.array([[50., 50],
                           [60., 60],
@@ -344,6 +346,8 @@ class TestDeisotoping:
         output = cleaner.consolidate_isotopic_peaks(input,
                                                     1.003355,
                                                     0.001)
+        
+        print(output)
 
         answer = np.array([[50., 50],
                           [59., 60],
@@ -361,19 +365,21 @@ class TestDeisotoping:
         cleaner = specCleaner()
 
         input = np.array([[50., 50],
-                          [51.0385, 40],
+                          [51.00299, 40],
                           [60., 60],
                           [61, 61],
-                          [61.999, 62],
+                          [62.0033, 62],
                           [68, 68]])
 
         output = cleaner.consolidate_isotopic_peaks(input,
                                                     1.003355,
                                                     0.001)
+        
+        print(output)
 
         answer = np.array([[50., 90],
                           [60., 60],
-                          [61.999, 123],
+                          [62.0033, 123],
                           [68, 68]])
 
         assert np.all(output == answer)
@@ -386,19 +392,79 @@ class TestDeisotoping:
         cleaner = specCleaner()
 
         input = np.array([[50., 50],
-                          [51.0385, 40],
+                          [51.003355, 40],
                           [60., 60],
                           [61, 61],
-                          [61.999, 62],
-                          [63.002, 40]])
+                          [62.003, 62],
+                          [63.006, 40]])
 
         output = cleaner.consolidate_isotopic_peaks(input,
                                                     1.003355,
-                                                    0.005)
+                                                    0.001)
+        
+        print(output)
 
         answer = np.array([[50., 90],
                           [60., 60],
-                          [61.999, 163]])
+                          [62.003, 163]])
+
+        assert np.all(output == answer)
+
+    def test_5(self):
+        """
+        chained isotopic peaks, middle is monoisotope. Other peaks around
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40]])
+
+        output = cleaner.consolidate_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [62.003, 163],
+                          [62.5, 65],])
+
+        assert np.all(output == answer)
+
+    def test_6(self):
+        """
+        chained isotopic peaks, middle is monoisotope. Other peaks around. additional at
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40],
+                          [64, 64]])
+
+        output = cleaner.consolidate_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [62.003, 163],
+                          [62.5, 65],
+                          [64, 64]])
 
         assert np.all(output == answer)
 
