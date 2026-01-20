@@ -1,7 +1,0 @@
-newDemos.ipynb
-
-# Ignore the 'build' directory
-build/
-
-# Ignore the 'build' directory
-__pycache__
