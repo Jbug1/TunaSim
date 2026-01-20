@@ -3,11 +3,6 @@ import pytest
 import numpy as np
 from TunaSimNetwork.datasetBuilder import specCleaner, trainSetBuilder
 
-
-# class cleaningTests:
-
-#     pass
-
 class TestMatching:
 
     def test_0(self):
@@ -467,12 +462,3 @@ class TestDeisotoping:
                           [64, 64]])
 
         assert np.all(output == answer)
-
-    
-
-
-
-
-
-
-
