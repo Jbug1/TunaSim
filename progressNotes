@@ -1,6 +1,0 @@
-
-now testing: downsampling of validation set for ensemble layer
-
-tbt: retrain on new val set for ensemble layer
-     predict train and validation without downsample for q adjustment layer
-     use old tunanetwork sims for msg training
