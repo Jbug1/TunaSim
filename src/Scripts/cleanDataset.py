@@ -4,7 +4,7 @@ from TunaSimNetwork.datasetBuilder import specCleaner
 from sys import argv
 import shutil
 from os import makedirs, path
-from pickle import load
+from pandas import read_pickle
 
 def main(config_path):
 
@@ -25,22 +25,30 @@ def main(config_path):
     logger.info(f'instantiated log and copied config')
 
     #load raw data
-    raw = load(config.raw_path)
+    raw = read_pickle(config.raw_path)
+
+    logger.info('read raw data')
 
     #instantiate cleaner
     cleaner = specCleaner(noise_threshold = config.noise_threshold,
-                          precursor_removal = config.precursor_removal_window_mz,
+                          precursor_removal_window_mz = config.precursor_removal_window_mz,
                           deisotoping_gaps = config.deisotoping_gaps,
                           isotope_mz_tolerance = config.isotope_mz_tolerance)
     
     logger.info('instantiated cleaner')
     
     #clean specs according to config specifications
-    cleaned = cleaner.clean_spectra(raw)
+    cleaned = cleaner.clean_spectra(raw['spectrum'],
+                                    raw['precursor'])
+
+    raw['spectrum'] = cleaned
+    raw['n_peaks'] = [len(spec) for spec in raw['spectrum']]
+
+    #raw = raw[raw['n_peaks'] > 0]
 
     logger.info('cleaned specs')
 
-    cleaned.to_pickle(f'{config.results_directory}/{config.cleaned_file_name}')
+    raw.to_pickle(f'{config.results_directory}/{config.cleaned_file_name}')
 
     logger.info('successfully wrote cleaned specs')
 
