@@ -420,16 +420,14 @@ class specCleaner:
 
     def __init__(self,
                  noise_threshold: float = 0.01,
-                 precursor_removal: float = 1.0,
                  deisotoping_gaps: list[float] = [1.003355],
                  isotope_mz_tolerance: float = 0.005,
-                 precursor_window: float = 1):
+                 precursor_removal_window_mz: float = 1):
         
         self.noise_threshold = noise_threshold
-        self.precursor_removal = precursor_removal
         self.deisotoping_gaps = deisotoping_gaps
         self.isotope_mz_tolerance = isotope_mz_tolerance
-        self.precursor_window = precursor_window
+        self.precursor_removal_window_mz = precursor_removal_window_mz
 
     def clean_spectra(self,
                       raw_spectra: list,
@@ -438,7 +436,11 @@ class specCleaner:
         output_specs = list()
         for spec, prec in zip(raw_spectra, precursors):
 
-            output_specs.append(self.clean_spectrum(spec, prec))
+            if len(spec) == 0:
+                output_specs.append(spec)
+
+            else:
+                output_specs.append(self.clean_spectrum(spec, prec))
 
         return output_specs
     
@@ -449,9 +451,15 @@ class specCleaner:
                                    mz_tolerance: float) -> NDArray:
         """ 
         consolidates intensities of isotopic peaks at the monoisotopic (most intense) mz
+        this one is going to be a beast because it needs to remain jit-able (no dealing with other objects)
         """
+
+        #handle empty input
+        if spec.size == 0:
+            return np.empty((0,0), dtype = np.float64)
+        
         #create output placeholder
-        output = np.zeros(spec.shape)
+        output = np.zeros(spec.shape, dtype = np.float64)
 
         i = 0
         j = 1
@@ -463,40 +471,60 @@ class specCleaner:
                 j += 1
 
             #jth value is below maximum
+            #we are within the window for consolidation
             elif spec[i,0] + gap + mz_tolerance > spec[j,0]:
 
                 #assign combined intensity to monoisotopic peak
-                #ith value is monoisotopic
+                #ith value is more prevalent isotope
                 if spec[i,1] > spec[j,1]:
-                    output[i, 0] = spec[i,0]
-                    output[i, 1] = spec[i,1] + spec[j,1]
+
+                    #check if we have consolidated i's intensity elsewhere
+                    monoisotopic_index = i if output[i,0] == 0 else int(-output[i,0] - 1)
+
+                    #update monoisotopic index of output with j index intensity
+                    output[monoisotopic_index, 0] = spec[monoisotopic_index,0]
+                    output[monoisotopic_index, 1] += spec[j,1]
+
+                    #also add i's intensity if we have not previously consolidated it
+                    if monoisotopic_index == i:
+
+                        output[monoisotopic_index, 1] += spec[i,1]
+
+                    #note in output that we have already consolidated the jth index to the ith position's intensity
+                    #not that this is the negative index so that we can easily filter later
+                    #add minus 1 to catch caswe of consolidation of first peak
+                    output[j, 0] = -monoisotopic_index - 1
 
                 #jth value is monoisotopic...be sure to set ith index to 0 for mz and int
                 else:
-                    output[j, 0] = spec[j,0]
-                    output[j, 1] = spec[j,1] + spec[j,1]
 
-                    #if ith index was previously monoiso we dont want to double count it
-                    output[i, 0] = 0
-                    output[i, 1] = 0
+                    #add index i's intensity in the j position
+                    #do nothing at ith index (will be removed)
+                    output[j, 1] = spec[i,1]
 
-                #increment only j in case another peak falls within the window
+                #increment both pointers
                 j += 1
+                i += 1
 
             #jth value is above max value for consolidation
             else:
 
-                output[i] = spec[i]
+                #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
                 i += 1
 
         #once j hits the end of the spec, there may be remaining peaks on the i index to add
         while i < spec.shape[0]:
 
-            output[i] = spec[i]
-            
-            i += 1
+            #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
 
-        #return only the necessary indices (those which have non zero values)
+                i += 1
+
+        #return only the necessary indices (those which have >0 values), will exclude unused and consolidated
         return output[output[:,0] > 0]
 
     def clean_spectrum(self,
@@ -506,19 +534,33 @@ class specCleaner:
         runs through basic cleaning steps and calls deisotoping protocol
         """
 
-        #precursor removal
-        spec = spec[spec[:,0] < precursor_mz - self.precursor_window]
+        #ensure no negative values
+        if np.any(spec[:,0] < 0):
+
+            raise ValueError('Negative values on mz dimension')
+        
+        if np.any(spec[:,1] < 0):
+
+            raise ValueError('Negative values on intensity dimension')
+
+        #ensure spectrum is sorted in ascending order by mz
+        spec = spec[spec[:,0].argsort()]
 
         #deisotoping
         for isotope_gap in self.deisotoping_gaps:
         
-            self.consolidate_isotopic_peaks(spec, isotope_gap, self.isotope_mz_tolerance)
+            spec = self.consolidate_isotopic_peaks(spec, isotope_gap, self.isotope_mz_tolerance)
 
-        #noise peak clipping
-        spec = spec[spec[:,1] > np.max(spec[:,1]) * self.noise_threshold]
+        #precursor removal
+        spec = spec[spec[:,0] < precursor_mz - self.precursor_removal_window_mz]
 
-        #renormalize
-        spec[:,1] = spec[:,1] / np.sum(spec[:,1])
+        if spec.shape[0] > 0:
+
+            #noise peak clipping
+            spec = spec[spec[:,1] > np.max(spec[:,1]) * self.noise_threshold]
+
+            #renormalize
+            spec[:,1] = spec[:,1] / np.sum(spec[:,1])
 
         return spec
 

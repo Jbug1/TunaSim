@@ -296,6 +296,7 @@ class TestDeisotoping:
                                                     1.003355,
                                                     0.001)
 
+        print(output)
         assert output.size == 0
 
     
@@ -435,7 +436,7 @@ class TestDeisotoping:
 
     def test_6(self):
         """
-        chained isotopic peaks, middle is monoisotope. Other peaks around. additional at
+        chained isotopic peaks, middle is monoisotope. Other peaks around. additional at end
         """
 
         cleaner = specCleaner()
@@ -458,6 +459,36 @@ class TestDeisotoping:
         answer = np.array([[50., 90],
                           [60., 60],
                           [62.003, 163],
+                          [62.5, 65],
+                          [64, 64]])
+
+        assert np.all(output == answer)
+    
+    def test_7(self):
+        """
+        chained isotopic peaks, first is monoisotope. Other peaks around. additional at end
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 68],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40],
+                          [64, 64]])
+
+        output = cleaner.consolidate_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [61., 170],
                           [62.5, 65],
                           [64, 64]])
 
