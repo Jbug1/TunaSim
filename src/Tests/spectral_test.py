@@ -284,6 +284,216 @@ class TestMatching:
         assert np.all(matched_a == answer_a) and np.all(matched_b == answer_b)
       
 
+class TestDeisotopingOld:
+
+    def test_0(self):
+
+        cleaner = specCleaner()
+
+        input = np.array([[]], dtype = np.float64)
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+
+        print(output)
+        assert output.size == 0
+
+    
+    def test_1(self):
+        """
+        one isotope to consolidate, first peak is monoiso
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61],
+                          [62.0033, 62],
+                          [68, 68]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [62.0033, 123],
+                          [68, 68]])
+
+        assert np.all(output == answer)
+
+    def test_2(self):
+        """
+        no isotopic peaks exist
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [59., 60],
+                          [61, 61],
+                          [62.04, 62],
+                          [68, 68]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [59., 60],
+                          [61, 61],
+                          [62.04, 62],
+                          [68, 68]])
+
+        assert np.all(output == answer)
+
+    def test_3(self):
+        """
+        two different fragements with isotopic peaks, first has lower mz monoiso, 2nd does not
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.00299, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.0033, 62],
+                          [68, 68]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [62.0033, 123],
+                          [68, 68]])
+
+        assert np.all(output == answer)
+
+    def test_4(self):
+        """
+        chained isotopic peaks, middle is monoisotope
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [63.006, 40]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [62.003, 163]])
+
+        assert np.all(output == answer)
+
+    def test_5(self):
+        """
+        chained isotopic peaks, middle is monoisotope. Other peaks around
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [62.003, 163],
+                          [62.5, 65],])
+
+        assert np.all(output == answer)
+
+    def test_6(self):
+        """
+        chained isotopic peaks, middle is monoisotope. Other peaks around. additional at end
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40],
+                          [64, 64]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [62.003, 163],
+                          [62.5, 65],
+                          [64, 64]])
+
+        assert np.all(output == answer)
+    
+    def test_7(self):
+        """
+        chained isotopic peaks, first is monoisotope. Other peaks around. additional at end
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 68],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40],
+                          [64, 64]])
+
+        output = cleaner.consolidate_isotopic_peaks_old(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 90],
+                          [60., 60],
+                          [61., 170],
+                          [62.5, 65],
+                          [64, 64]])
+
+        assert np.all(output == answer)
+
 class TestDeisotoping:
 
     def test_0(self):
@@ -321,7 +531,7 @@ class TestDeisotoping:
 
         answer = np.array([[50., 50],
                           [60., 60],
-                          [62.0033, 123],
+                          [61, 123],
                           [68, 68]])
 
         assert np.all(output == answer)
@@ -355,7 +565,7 @@ class TestDeisotoping:
 
     def test_3(self):
         """
-        two different fragements with isotopic peaks, first has lower mz monoiso, 2nd does not
+        two different fragements with isotopic peaks, first has lower mz higher intensity, 2nd does not
         """
 
         cleaner = specCleaner()
@@ -375,14 +585,14 @@ class TestDeisotoping:
 
         answer = np.array([[50., 90],
                           [60., 60],
-                          [62.0033, 123],
+                          [61, 123],
                           [68, 68]])
 
         assert np.all(output == answer)
 
     def test_4(self):
         """
-        chained isotopic peaks, middle is monoisotope
+        chained isotopic peaks, middle is most intense
         """
 
         cleaner = specCleaner()
@@ -402,13 +612,13 @@ class TestDeisotoping:
 
         answer = np.array([[50., 90],
                           [60., 60],
-                          [62.003, 163]])
+                          [61, 163]])
 
         assert np.all(output == answer)
 
     def test_5(self):
         """
-        chained isotopic peaks, middle is monoisotope. Other peaks around
+        chained isotopic peaks, middle is most intense. Other peaks around
         """
 
         cleaner = specCleaner()
@@ -429,14 +639,14 @@ class TestDeisotoping:
 
         answer = np.array([[50., 90],
                           [60., 60],
-                          [62.003, 163],
+                          [61, 163],
                           [62.5, 65],])
 
         assert np.all(output == answer)
 
     def test_6(self):
         """
-        chained isotopic peaks, middle is monoisotope. Other peaks around. additional at end
+        chained isotopic peaks, middle is most intense. Other peaks around. additional at end
         """
 
         cleaner = specCleaner()
@@ -458,7 +668,7 @@ class TestDeisotoping:
 
         answer = np.array([[50., 90],
                           [60., 60],
-                          [62.003, 163],
+                          [61, 163],
                           [62.5, 65],
                           [64, 64]])
 
@@ -489,6 +699,216 @@ class TestDeisotoping:
         answer = np.array([[50., 90],
                           [60., 60],
                           [61., 170],
+                          [62.5, 65],
+                          [64, 64]])
+
+        assert np.all(output == answer)
+
+class TestDeisotopingDrop:
+
+    def test_0(self):
+
+        cleaner = specCleaner()
+
+        input = np.array([[]], dtype = np.float64)
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+
+        print(output)
+        assert output.size == 0
+
+    
+    def test_1(self):
+        """
+        one isotope to consolidate, first peak is monoiso
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61],
+                          [62.0033, 62],
+                          [68, 68]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61],
+                          [68, 68]])
+
+        assert np.all(output == answer)
+
+    def test_2(self):
+        """
+        no isotopic peaks exist
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [59., 60],
+                          [61, 61],
+                          [62.04, 62],
+                          [68, 68]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [59., 60],
+                          [61, 61],
+                          [62.04, 62],
+                          [68, 68]])
+
+        assert np.all(output == answer)
+
+    def test_3(self):
+        """
+        two different fragements with isotopic peaks, first has lower mz higher intensity, 2nd does not
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.00299, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.0033, 62],
+                          [68, 68]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61],
+                          [68, 68]])
+
+        assert np.all(output == answer)
+
+    def test_4(self):
+        """
+        chained isotopic peaks, middle is most intense
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [63.006, 40]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61]])
+
+        assert np.all(output == answer)
+
+    def test_5(self):
+        """
+        chained isotopic peaks, middle is most intense. Other peaks around
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61],
+                          [62.5, 65],])
+
+        assert np.all(output == answer)
+
+    def test_6(self):
+        """
+        chained isotopic peaks, middle is most intense. Other peaks around. additional at end
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 61],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40],
+                          [64, 64]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [61, 61],
+                          [62.5, 65],
+                          [64, 64]])
+
+        assert np.all(output == answer)
+    
+    def test_7(self):
+        """
+        chained isotopic peaks, first is monoisotope. Other peaks around. additional at end
+        """
+
+        cleaner = specCleaner()
+
+        input = np.array([[50., 50],
+                          [51.003355, 40],
+                          [60., 60],
+                          [61, 68],
+                          [62.003, 62],
+                          [62.5, 65],
+                          [63.006, 40],
+                          [64, 64]])
+
+        output = cleaner.drop_isotopic_peaks(input,
+                                                    1.003355,
+                                                    0.001)
+        
+        print(output)
+
+        answer = np.array([[50., 50],
+                          [60., 60],
+                          [61., 68],
                           [62.5, 65],
                           [64, 64]])
 
