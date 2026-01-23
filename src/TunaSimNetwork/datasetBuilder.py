@@ -446,7 +446,7 @@ class specCleaner:
     
     @staticmethod
     @njit
-    def consolidate_isotopic_peaks(spec: NDArray, 
+    def consolidate_isotopic_peaks_old(spec: NDArray, 
                                    gap: float, 
                                    mz_tolerance: float) -> NDArray:
         """ 
@@ -563,4 +563,143 @@ class specCleaner:
             spec[:,1] = spec[:,1] / np.sum(spec[:,1])
 
         return spec
+    
+    @staticmethod
+    @njit
+    def consolidate_isotopic_peaks(spec: NDArray, 
+                                   gap: float, 
+                                   mz_tolerance: float) -> NDArray:
+        """ 
+        consolidate based on expected direction of isotopic pattern
 
+        will only consolidate if M+0 peak is greater intensity
+        """
+
+        #handle empty input
+        if spec.size == 0:
+            return np.empty((0,0), dtype = np.float64)
+        
+        #create output placeholder
+        output = np.zeros(spec.shape, dtype = np.float64)
+
+        i = 0
+        j = 1
+
+        while j < spec.shape[0]:
+
+            #jth value is below minimum
+            if spec[i,0] + gap - mz_tolerance > spec[j,0]:
+                j += 1
+
+            #jth value is below maximum
+            #we are within the window for consolidation
+            elif spec[i,0] + gap + mz_tolerance > spec[j,0]:
+
+                #assign combined intensity to monoisotopic peak    
+                #check if we have consolidated i's intensity elsewhere
+                monoisotopic_index = i if output[i,0] == 0 else int(-output[i,0] - 1)
+
+                #update monoisotopic index of output with j index intensity
+                output[monoisotopic_index, 0] = spec[monoisotopic_index,0]
+                output[monoisotopic_index, 1] += spec[j,1]
+
+                #also add i's intensity if we have not previously consolidated it
+                if monoisotopic_index == i:
+
+                    output[monoisotopic_index, 1] += spec[i,1]
+
+                #note in output that we have already consolidated the jth index to the ith position's intensity
+                #not that this is the negative index so that we can easily filter later
+                #add minus 1 to catch caswe of consolidation of first peak
+                output[j, 0] = -monoisotopic_index - 1
+
+                #increment both pointers
+                j += 1
+                i += 1
+
+            #jth value is above max value for consolidation
+            else:
+
+                #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
+                i += 1
+
+        #once j hits the end of the spec, there may be remaining peaks on the i index to add
+        while i < spec.shape[0]:
+
+            #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
+                i += 1
+
+        #return only the necessary indices (those which have >0 values), will exclude unused and consolidated
+        return output[output[:,0] > 0]
+    
+    @staticmethod
+    @njit
+    def drop_isotopic_peaks(spec: NDArray, 
+                                   gap: float, 
+                                   mz_tolerance: float) -> NDArray:
+        """ 
+        drops the higher mz peak
+
+        will only consolidate if M+0 peak is greater intensity
+        """
+
+        #handle empty input
+        if spec.size == 0:
+            return np.empty((0,0), dtype = np.float64)
+        
+        #create output placeholder
+        output = np.zeros(spec.shape, dtype = np.float64)
+
+        i = 0
+        j = 1
+
+        while j < spec.shape[0]:
+
+            #jth value is below minimum
+            if spec[i,0] + gap - mz_tolerance > spec[j,0]:
+                j += 1
+
+            #jth value is below maximum
+            #we are within the window for consolidation
+            elif spec[i,0] + gap + mz_tolerance > spec[j,0]:
+
+                #assign combined intensity to monoisotopic peak    
+                #check if we have consolidated i's intensity elsewhere
+                if output[i,0] == 0:
+
+                    output[i] = spec[i]
+
+
+                #note that jth index should be skipped when the i pointer arrives at it
+                output[j, 0] = - 1
+
+                #increment both pointers
+                j += 1
+                i += 1
+
+            #jth value is above max value for consolidation
+            else:
+
+                #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
+                i += 1
+
+        #once j hits the end of the spec, there may be remaining peaks on the i index to add
+        while i < spec.shape[0]:
+
+            #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
+                i += 1
+
+        #return only the necessary indices (those which have >0 values), will exclude unused and consolidated
+        return output[output[:,0] > 0]
