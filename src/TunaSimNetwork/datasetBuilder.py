@@ -3,12 +3,18 @@
 import pandas as pd
 import numpy as np
 from numpy.typing import NDArray
+from typing import List
 import os
 import time
 import bisect
 from logging import getLogger
 from numba import njit
 import warnings
+import requests
+from rdkit import Chem
+from rdkit.Chem import rdRascalMCES
+from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
 warnings.filterwarnings('ignore')
 
 @njit
@@ -526,6 +532,96 @@ class specCleaner:
 
         #return only the necessary indices (those which have >0 values), will exclude unused and consolidated
         return output[output[:,0] > 0]
+    
+    @staticmethod
+    @njit
+    def consolidate_direction_counter(spec: NDArray, 
+                                   gap: float, 
+                                   mz_tolerance: float) -> NDArray:
+        """ 
+        consolidates intensities of isotopic peaks at the monoisotopic (most intense) mz
+        this one is going to be a beast because it needs to remain jit-able (no dealing with other objects)
+        """
+
+        forwards = [0.]
+        backwards = [0.]
+
+        #handle empty input
+        if spec.size == 0:
+            return ([0.],[0.])
+        
+        #create output placeholder
+        output = np.zeros(spec.shape, dtype = np.float64)
+
+        i = 0
+        j = 1
+
+        while j < spec.shape[0]:
+
+            #jth value is below minimum
+            if spec[i,0] + gap - mz_tolerance > spec[j,0]:
+                j += 1
+
+            #jth value is below maximum
+            #we are within the window for consolidation
+            elif spec[i,0] + gap + mz_tolerance > spec[j,0]:
+
+                #assign combined intensity to monoisotopic peak
+                #ith value is more prevalent isotope
+                if spec[i,1] > spec[j,1]:
+
+                    backwards.append(spec[i,0])
+
+                    #check if we have consolidated i's intensity elsewhere
+                    monoisotopic_index = i if output[i,0] == 0 else int(-output[i,0] - 1)
+
+                    #update monoisotopic index of output with j index intensity
+                    output[monoisotopic_index, 0] = spec[monoisotopic_index,0]
+                    output[monoisotopic_index, 1] += spec[j,1]
+
+                    #also add i's intensity if we have not previously consolidated it
+                    if monoisotopic_index == i:
+
+                        output[monoisotopic_index, 1] += spec[i,1]
+
+                    #note in output that we have already consolidated the jth index to the ith position's intensity
+                    #not that this is the negative index so that we can easily filter later
+                    #add minus 1 to catch caswe of consolidation of first peak
+                    output[j, 0] = -monoisotopic_index - 1
+
+                #jth value is monoisotopic...be sure to set ith index to 0 for mz and int
+                else:
+
+                    #add index i's intensity in the j position
+                    #do nothing at ith index (will be removed)
+                    output[j, 1] = spec[i,1]
+
+                    forwards.append(spec[i,0])
+
+                #increment both pointers
+                j += 1
+                i += 1
+
+            #jth value is above max value for consolidation
+            else:
+
+                #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
+                i += 1
+
+        #once j hits the end of the spec, there may be remaining peaks on the i index to add
+        while i < spec.shape[0]:
+
+            #check to make sure that ith index has not already been consolidated to another
+                if output[i,0] >= 0:
+                    output[i] += spec[i]
+
+                i += 1
+
+        #return only the necessary indices (those which have >0 values), will exclude unused and consolidated
+        return (forwards, backwards)
 
     def clean_spectrum(self,
                        spec: NDArray, 
@@ -549,7 +645,7 @@ class specCleaner:
         #deisotoping
         for isotope_gap in self.deisotoping_gaps:
         
-            spec = self.consolidate_isotopic_peaks(spec, isotope_gap, self.isotope_mz_tolerance)
+            spec = self.drop_isotopic_peaks(spec, isotope_gap, self.isotope_mz_tolerance)
 
         #precursor removal
         spec = spec[spec[:,0] < precursor_mz - self.precursor_removal_window_mz]
@@ -703,3 +799,140 @@ class specCleaner:
 
         #return only the necessary indices (those which have >0 values), will exclude unused and consolidated
         return output[output[:,0] > 0]
+    
+
+class foldCreation:
+
+    def __init__(self,
+                 fold_names: list = [],
+                 fold_sizes: list = [],
+                 rascal_options: rdRascalMCES.RascalOptions = None,
+                 interfold_max_MCES: float = 0.9,
+                 fold_by_formula: bool = True,
+                 fold_by_exact_mass: bool = True,
+                 datasets: list = [],
+                 dataset_fold_mappings: List[tuple] = [],
+                 inter_query_sleep_time: float = 0.2):
+
+        self.fold_names = fold_names
+        self.fold_sizes = fold_sizes
+        self.rascal_options = rascal_options
+        self.interfold_max_MCES = interfold_max_MCES
+        self.fold_by_formula = fold_by_formula
+        self.fold_by_exact_mass = fold_by_exact_mass
+        self.datasets = datasets
+        self.dataset_fold_mappings = dataset_fold_mappings
+        self.inter_query_sleep_time = inter_query_sleep_time 
+
+
+    def get_pubchem_data_from_inchikey(self,
+                                       inchikey: str):
+        """
+        simply returns first hit
+        """
+
+        response = requests.get(f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSmiles,InChI,MolecularFormula/json')
+
+        if response.status_code == 200:
+
+            response_data = response.json()['PropertyTable']['Properties']
+
+            return (inchikey, response_data[0]['CID'], 
+                    response_data[0]['InChI'], 
+                    response_data[0]['ConnectivitySMILES'], 
+                    response_data[0]['MolecularFormula'])
+        
+        return response.status_code
+    
+    def get_CTS_data_from_inchikey(self,
+                                   inchikey):
+    
+        inchi = [i['results'] for i in requests.get(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/inchi Code/{inchikey}').json()]
+
+        cid = [i['results'] for i in requests.get(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/PubChem CID/{inchikey}').json()]
+
+        if len(inchi) != len(cid):
+            return 'length mismatch'
+        
+        return [(inchikey, cid[i], inchi[i]) for i in range(len(inchi))]
+    
+    def get_annotations_for_inchikeys(self, inchikeys):
+        """ 
+        Try to gather from pubchem first and then check CTS for those we cannot find
+        
+        """
+
+        pubchem_data = list()
+        for key in inchikeys:
+
+            response = self.get_pubchem_data_from_inchikey(key)
+
+            if type(response) != int:
+
+                pubchem_data.append(response)
+
+            time.sleep(self.inter_query_sleep_time)
+
+        unsuccessful_keys = list(set(inchikeys) - set([i[0] for i in pubchem_data]))
+
+        cts_data = list()
+        for key in unsuccessful_keys:
+
+            response = self.get_CTS_data_from_inchikey(key)
+
+            for group in response:
+
+                if np.any((len(group[1]) > 0, len(group[2]) > 0)):
+
+                    cts_data.append((group[0], group[1][0], group[2][0]))
+                
+        cts_data = self.integrate_cts_data(cts_data)
+
+        pubchem_data = pd.DataFrame({'inchikey': [i[0] for i in pubchem_data],
+                                    'CID': [i[1] for i in pubchem_data],
+                                    'inchi': [i[2] for i in pubchem_data],
+                                    'smiles': [i[3] for i in pubchem_data],
+                                    'formula': [i[4] for i in pubchem_data],
+                                    'source': ['pubchem' for _ in pubchem_data]})
+
+        return pd.concat((pubchem_data, cts_data))
+    
+    def integrate_cts_data(self, cts_data):
+        """
+        reshapes and converts to df, mondful of missing smiles
+        """
+
+        formulas = list()
+        for inchi in [i[2] for i in cts_data]:
+
+            mol = Chem.MolFromInchi(inchi)
+
+            formulas.append(CalcMolFormula(mol))
+
+        return pd.DataFrame({'inchikey': [i[0] for i in cts_data],
+                             'CID': [i[1] for i in cts_data],
+                             'inchi': [i[2] for i in cts_data],
+                             'smiles': ['' for _ in cts_data],
+                             'formula': formulas,
+                             'source': ['cts' for _ in cts_data]})
+    
+
+        
+
+
+            
+
+
+        
+
+
+
+
+    
+    
+
+    
+
+    
+
+            
