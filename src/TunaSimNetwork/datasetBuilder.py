@@ -812,18 +812,19 @@ class foldCreation:
                  fold_names: list = [],
                  fold_sizes: list = [],
                  rascal_options: rdRascalMCES.RascalOptions = None,
-                 interfold_max_MCES: float = 0.9,
+                 fold_mz_match: bool = True,
                  fold_by_formula: bool = True,
                  fold_by_exact_mass: bool = True,
-                 datasets: list = [],
+                 datasets: list[str] = [],
                  dataset_fold_mappings: List[tuple] = [],
                  inter_query_sleep_time: float = 0.2,
-                 output_directory: str = ''):
+                 output_directory: str = '',
+                 ):
 
         self.fold_names = fold_names
         self.fold_sizes = fold_sizes
         self.rascal_options = rascal_options
-        self.interfold_max_MCES = interfold_max_MCES
+        self.fold_mz_match = fold_mz_match
         self.fold_by_formula = fold_by_formula
         self.fold_by_exact_mass = fold_by_exact_mass
         self.datasets = datasets
@@ -840,7 +841,7 @@ class foldCreation:
         simply returns first hit
         """
 
-        response = self.request_retry(f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSmiles,InChI,MolecularFormula/json')
+        response = self.request_retry(f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSmiles,InChI,MolecularFormula,MonoisotopicMass/json')
 
         if response.status_code == 200:
 
@@ -849,7 +850,8 @@ class foldCreation:
             return (inchikey, response_data[0]['CID'], 
                     response_data[0]['InChI'], 
                     response_data[0]['ConnectivitySMILES'], 
-                    response_data[0]['MolecularFormula'])
+                    response_data[0]['MolecularFormula'],
+                    response_data[0]['MonoisotopicMass'])
         
         return response.status_code
     
@@ -922,6 +924,10 @@ class foldCreation:
                     inchi = group[2][0] if len(group[2]) > 0 else ''
 
                     cts_data.append((group[0], cid, inchi))
+
+                #otherwise make a note that we were unable to find this key
+                else:
+                    errored_keys.append((key, 'not found'))
                 
         cts_data = self.integrate_cts_data(cts_data)
 
@@ -930,6 +936,7 @@ class foldCreation:
                                     'inchi': [i[2] for i in pubchem_data],
                                     'smiles': [i[3] for i in pubchem_data],
                                     'formula': [i[4] for i in pubchem_data],
+                                    'monoisotopicMass': [i[5] for i in pubchem_data],
                                     'source': ['pubchem' for _ in pubchem_data]})
 
         return (pd.concat((pubchem_data, cts_data)), errored_keys)
@@ -940,17 +947,37 @@ class foldCreation:
         """
 
         formulas = list()
+        monoisotopic_masses = list()
         for inchi in [i[2] for i in cts_data]:
 
             mol = Chem.MolFromInchi(inchi)
+            formula = CalcMolFormula(mol)
+            monoisotopic_mass = ExactMolWt(mol)
 
-            formulas.append(CalcMolFormula(mol))
+            if formula[-1] == '-':
+
+                #add a hydrogen to formula
+                formula = self.augment_hydrogen(formula[:-1], add = True)
+
+                #subtract electron mass, add a hydrogen
+                monoisotopic_mass  = monoisotopic_mass - 5.486e-4 + 1.007825
+
+            elif formula[-1] == '+':
+
+                formula = self.augment_hydrogen(formula[:-1], add = True)
+
+                #add electron mass, subtract a hydrogen
+                monoisotopic_mass  = monoisotopic_mass + 5.486e-4 - 1.007825
+
+            formulas.append(formula)
+            monoisotopic_masses.append(monoisotopic_mass)
 
         return pd.DataFrame({'inchikey': [i[0] for i in cts_data],
                              'CID': [i[1] for i in cts_data],
                              'inchi': [i[2] for i in cts_data],
                              'smiles': ['' for _ in cts_data],
                              'formula': formulas,
+                             'monoisotopicMass': monoisotopic_masses,
                              'source': ['cts' for _ in cts_data]})
 
     def batch_group_generator(self, n_items, batch_size=10000, batches_per_group=10):
@@ -1001,6 +1028,36 @@ class foldCreation:
             df_res.columns = ['query','target','mces','code']
 
             df_res.to_csv(path = f'{self.output_directory}/fold_input_data.csv', mode = 'a', index = False)
+
+    def augment_hydrogen(formula: str, 
+                     add: bool = True):
+    
+        if 'H' not in formula:
+            raise ValueError('cannot correct formula lacking hydrogen')
+        
+        for i in range(len(formula)):
+
+            if formula[i] == 'H' and formula[i+1].isdigit():
+
+                hydrogen_index = i
+                break
+        
+        int_length = 1
+        while hydrogen_index + int_length < len(formula) and formula[hydrogen_index + int_length].isdigit():
+
+            int_length +=1
+
+        if add:
+            formula = formula[:hydrogen_index + 1] \
+                    + str(int(formula[hydrogen_index + 1: hydrogen_index + int_length]) + 1) \
+                    + formula[hydrogen_index + int_length:]
+            
+        else:
+            formula = formula[:hydrogen_index + 1] \
+                    + str(int(formula[hydrogen_index + 1: hydrogen_index + int_length]) - 1) \
+                    + formula[hydrogen_index + int_length:]
+        
+        return formula
 
 
     def calc_profile_similarity(self,

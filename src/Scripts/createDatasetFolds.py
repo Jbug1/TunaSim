@@ -28,4 +28,7 @@ def main(config_path):
 
     logger.info(f'instantiated log and copied config')
 
+
+    #instantiate
+
     
