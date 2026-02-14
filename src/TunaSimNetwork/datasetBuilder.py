@@ -14,6 +14,11 @@ import requests
 from rdkit import Chem
 from rdkit.Chem import rdRascalMCES
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+from rdkit.Chem.Descriptors import ExactMolWt
+from joblib import Parallel, delayed
+from itertools import combinations
+import sys
+from io import StringIO
 
 warnings.filterwarnings('ignore')
 
@@ -812,7 +817,8 @@ class foldCreation:
                  fold_by_exact_mass: bool = True,
                  datasets: list = [],
                  dataset_fold_mappings: List[tuple] = [],
-                 inter_query_sleep_time: float = 0.2):
+                 inter_query_sleep_time: float = 0.2,
+                 output_directory: str = ''):
 
         self.fold_names = fold_names
         self.fold_sizes = fold_sizes
@@ -823,6 +829,9 @@ class foldCreation:
         self.datasets = datasets
         self.dataset_fold_mappings = dataset_fold_mappings
         self.inter_query_sleep_time = inter_query_sleep_time 
+        self.output_directory = output_directory
+
+        os.makedirs(self.output_directory, exist_ok=True)
 
 
     def get_pubchem_data_from_inchikey(self,
@@ -831,7 +840,7 @@ class foldCreation:
         simply returns first hit
         """
 
-        response = requests.get(f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSmiles,InChI,MolecularFormula/json')
+        response = self.request_retry(f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSmiles,InChI,MolecularFormula/json')
 
         if response.status_code == 200:
 
@@ -844,12 +853,28 @@ class foldCreation:
         
         return response.status_code
     
+    def request_retry(self, url, retries = 10):
+
+        attempts = 1
+        while attempts < retries:
+
+            try:
+                return requests.get(url)
+
+            except Exception as err:
+                if attempts < retries:
+                    attempts += 1
+
+                else:
+                    raise err
+
     def get_CTS_data_from_inchikey(self,
                                    inchikey):
+        
     
-        inchi = [i['results'] for i in requests.get(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/inchi Code/{inchikey}').json()]
+        inchi = [i['results'] for i in self.request_retry(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/inchi Code/{inchikey}').json()]
 
-        cid = [i['results'] for i in requests.get(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/PubChem CID/{inchikey}').json()]
+        cid = [i['results'] for i in self.request_retry(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/PubChem CID/{inchikey}').json()]
 
         if len(inchi) != len(cid):
             return 'length mismatch'
@@ -861,11 +886,16 @@ class foldCreation:
         Try to gather from pubchem first and then check CTS for those we cannot find
         
         """
+        errored_keys = list()
 
         pubchem_data = list()
         for key in inchikeys:
 
-            response = self.get_pubchem_data_from_inchikey(key)
+            try:
+                response = self.get_pubchem_data_from_inchikey(key)
+
+            except Exception as err:
+                errored_keys.append((key, err, 'pubchem'))
 
             if type(response) != int:
 
@@ -878,13 +908,20 @@ class foldCreation:
         cts_data = list()
         for key in unsuccessful_keys:
 
-            response = self.get_CTS_data_from_inchikey(key)
+            try:
+                response = self.get_CTS_data_from_inchikey(key)
+
+            except Exception as err:
+                errored_keys.append((key, err, 'CTS'))
 
             for group in response:
 
                 if np.any((len(group[1]) > 0, len(group[2]) > 0)):
 
-                    cts_data.append((group[0], group[1][0], group[2][0]))
+                    cid = group[1][0] if len(group[1]) > 0 else ''
+                    inchi = group[2][0] if len(group[2]) > 0 else ''
+
+                    cts_data.append((group[0], cid, inchi))
                 
         cts_data = self.integrate_cts_data(cts_data)
 
@@ -895,7 +932,7 @@ class foldCreation:
                                     'formula': [i[4] for i in pubchem_data],
                                     'source': ['pubchem' for _ in pubchem_data]})
 
-        return pd.concat((pubchem_data, cts_data))
+        return (pd.concat((pubchem_data, cts_data)), errored_keys)
     
     def integrate_cts_data(self, cts_data):
         """
@@ -915,24 +952,126 @@ class foldCreation:
                              'smiles': ['' for _ in cts_data],
                              'formula': formulas,
                              'source': ['cts' for _ in cts_data]})
-    
 
-        
+    def batch_group_generator(self, n_items, batch_size=10000, batches_per_group=10):
+        """
+        Generate groups of n batches for parallel processing
+        Maintains generator state across yields
 
+        Args:
+            n_items: Number of items to generate combinations for
+            batch_size: Number of pairs per batch
+            batches_per_group: Number of batches to yield together
 
+        Yields:
+            List of batches, where each batch is a list of (i,j) tuples
+        """
+        batch_gen = self.batch_combinations(n_items, batch_size)
+
+        while True:
+            batch_group = []
+            for _ in range(batches_per_group):
+                try:
+                    batch_group.append(next(batch_gen))
+                except StopIteration:
+                    # No more batches
+                    if batch_group:
+                        yield batch_group
+                    return
+
+            yield batch_group
+
+    def parallel_sim_generation(self,
+                                inchi_bases: List,
+                                mols: List,
+                                mzs: List):
+        """
+        generates/writes pairwise sims in batches when not 0
+        """
+
+        for batches in self.batch_group_generator(len(inchi_bases), batch_size = int(1e7)):
+
+            sim_res = Parallel(n_jobs = self.n_jobs)(
+                                delayed(self.calc_profile_similarity)(batch, mols, mzs) for batch in batches)
             
+            flattened_res = [item for sublist in sim_res for item in sublist]
+
+            df_res = pd.DataFrame([[i[0],i[1],i[2],i[3]] for i in flattened_res])
+
+            df_res.columns = ['query','target','mces','code']
+
+            df_res.to_csv(path = f'{self.output_directory}/fold_input_data.csv', mode = 'a', index = False)
 
 
+    def calc_profile_similarity(self,
+                                batch_inds: List[tuple],
+                                mols: List[Chem.Mol],
+                                mzs: List[set]):
+
+        """
+        prescreen and compute MCES if necessary in parallel
+
+        only returns a result if MCES is above threshold for storage help
+
+        mzs should be nested list of all observed mzs rounded to some value from our db
+        """
+
+        batch_res = list()
+
+        #same mz maps to same fold
+        for i, j in batch_inds:
+
+            #3 encodes an mz match
+            if len(mzs[i].intersection(mzs[j])) > 0:
+
+                batch_res.append((i,j,1,3))
         
+            else:
 
+                old_stderr = sys.stderr
+                sys.stderr = captured_stderr = StringIO()
+                
+                try:
+                    results = rdRascalMCES.FindMCES(mols[i], mols[j], self.rascal_options)
+                    stderr_output = captured_stderr.getvalue()
+                finally:
+                    sys.stderr = old_stderr
 
+                if len(results) == 0:
+                    sim = 0
 
+                else:
 
+                    sim = results[0].similarity
+                    timeout = results[0].timedOut
+
+                #2 encodes the max bond pairs being exceeded
+                if "bond pairs" in stderr_output:
+                    batch_res.append((i, j, 1, 2))
+
+                #1 encodes that we timed out
+                elif timeout:
+                    batch_res.append((i, j, 1, 1))
+
+                #we only care about the sim if it is greater than the tier1 threshold
+                #0 encodes everything happened normally
+                elif sim > self.rascal_options.similarityThreshold:
+                    batch_res.append((i,j,sim,0))
+
+        return batch_res
     
-    
+    def generate_mz_sets_by_inchi_base(self, inchi_bases, mols, combined_dataset):
 
-    
+        base_mzs = [ExactMolWt(mol) for mol in mols]
 
-    
+        total_mzs = list()
+        for base, base_mz in zip (inchi_bases, base_mzs):
 
-            
+            data_based_set = set([round(i,2) for i in combined_dataset[combined_dataset['inchi_base'] == base]['precursor']])
+            data_based_set.add(round(base_mz,2))
+            total_mzs.append(data_based_set)
+
+        return total_mzs
+
+
+
