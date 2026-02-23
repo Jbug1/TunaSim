@@ -10,17 +10,15 @@ import bisect
 from logging import getLogger
 from numba import njit
 import warnings
-import requests
 from rdkit import Chem
 from rdkit.Chem import rdRascalMCES
-from rdkit.Chem.rdMolDescriptors import CalcMolFormula
-from rdkit.Chem.Descriptors import ExactMolWt
 from joblib import Parallel, delayed
 from itertools import combinations
-import sys
-import signal
-from io import StringIO
-import re
+from TunaSimNetwork.annotationTools import simDB
+
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
+
 
 warnings.filterwarnings('ignore')
 
@@ -80,6 +78,7 @@ def ppm(base, ppm):
     """
 
     return base * (ppm / 1e6)
+
 
 class trainSetBuilder:
 
@@ -814,261 +813,78 @@ class foldCreation:
                  fold_names: list = [],
                  fold_sizes: list = [],
                  rascal_options: rdRascalMCES.RascalOptions = None,
-                 fold_mz_match: bool = True,
-                 fold_by_formula: bool = True,
                  fold_by_exact_mass: bool = True,
                  datasets: list[str] = [],
                  dataset_fold_mappings: List[tuple] = [],
-                 inter_query_sleep_time: float = 0.2,
-                 output_directory: str = '',
+                 mz_digits: int = 2,
+                 n_jobs: int = 1,
+                 sim_db: simDB = None,
                  ):
 
         self.fold_names = fold_names
         self.fold_sizes = fold_sizes
         self.rascal_options = rascal_options
-        self.fold_mz_match = fold_mz_match
-        self.fold_by_formula = fold_by_formula
         self.fold_by_exact_mass = fold_by_exact_mass
         self.datasets = datasets
         self.dataset_fold_mappings = dataset_fold_mappings
-        self.inter_query_sleep_time = inter_query_sleep_time 
-        self.output_directory = output_directory
+        self.mz_digits = mz_digits
+        self.n_jobs = n_jobs
+        self.sim_db = sim_db
 
-        os.makedirs(self.output_directory, exist_ok=True)
-
-
-    def get_pubchem_data_from_inchikey(self,
-                                       inchikey: str):
+    def batch_combinations(self, n_items, batch_size):
         """
-        simply returns first hit
-        """
-
-        response = self.request_retry(f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSmiles,InChI,MolecularFormula,MonoisotopicMass/json')
-
-        if response.status_code == 200:
-
-            response_data = response.json()['PropertyTable']['Properties']
-
-            return (inchikey, response_data[0]['CID'], 
-                    response_data[0]['InChI'], 
-                    response_data[0]['ConnectivitySMILES'], 
-                    response_data[0]['MolecularFormula'],
-                    response_data[0]['MonoisotopicMass'])
-        
-        return response.status_code
-    
-    def request_retry(self, url, retries = 10):
-
-        attempts = 1
-        while attempts < retries:
-
-            try:
-                return requests.get(url)
-
-            except Exception as err:
-                if attempts < retries:
-                    attempts += 1
-
-                else:
-                    raise err
-
-    def get_CTS_data_from_inchikey(self,
-                                   inchikey):
-        
-    
-        inchi = [i['results'] for i in self.request_retry(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/inchi Code/{inchikey}').json()]
-
-        cid = [i['results'] for i in self.request_retry(f'https://cts.fiehnlab.ucdavis.edu/rest/convert/InChIKey/PubChem CID/{inchikey}').json()]
-
-        if len(inchi) != len(cid):
-            return 'length mismatch'
-        
-        return [(inchikey, cid[i], inchi[i]) for i in range(len(inchi))]
-    
-    def get_annotations_for_inchikeys(self, inchikeys):
-        """ 
-        Try to gather from pubchem first and then check CTS for those we cannot find
-        
-        """
-        errored_keys = list()
-
-        pubchem_data = list()
-        for key in inchikeys:
-
-            try:
-                response = self.get_pubchem_data_from_inchikey(key)
-
-            except Exception as err:
-                errored_keys.append((key, err, 'pubchem'))
-
-            if type(response) != int:
-
-                pubchem_data.append(response)
-
-            time.sleep(self.inter_query_sleep_time)
-
-        unsuccessful_keys = list(set(inchikeys) - set([i[0] for i in pubchem_data]))
-
-        cts_data = list()
-        for key in unsuccessful_keys:
-
-            try:
-                response = self.get_CTS_data_from_inchikey(key)
-
-            except Exception as err:
-                errored_keys.append((key, err, 'CTS'))
-
-            for group in response:
-
-                if np.any((len(group[1]) > 0, len(group[2]) > 0)):
-
-                    cid = group[1][0] if len(group[1]) > 0 else ''
-                    inchi = group[2][0] if len(group[2]) > 0 else ''
-
-                    cts_data.append((group[0], cid, inchi))
-
-                #otherwise make a note that we were unable to find this key
-                else:
-                    errored_keys.append((key, 'not found'))
-                
-        cts_data = self.integrate_cts_data(cts_data)
-
-        pubchem_data = self.integrate_pubchem_data(pubchem_data)
-
-        return (pd.concat((pubchem_data, cts_data)), errored_keys)
-    
-    def integrate_pubchem_data(self, pubchem_data):
-
-        calculated_masses = [ExactMolWt(Chem.MolFromInchi(i[2])) for i in pubchem_data]
-
-        return pd.DataFrame({'inchikey': [i[0] for i in pubchem_data],
-                            'CID': [i[1] for i in pubchem_data],
-                            'inchi': [i[2] for i in pubchem_data],
-                            'smiles': [i[3] for i in pubchem_data],
-                            'formula': [i[4] for i in pubchem_data],
-                            'retrieved_mass': [i[5] for i in pubchem_data],
-                            'calculated_mass': calculated_masses,
-                            'monoisotopic_mass': [self.formula_to_mass(i[4]) for i in pubchem_data],
-                            'source': ['pubchem' for _ in pubchem_data]})
-    
-
-    def integrate_cts_data(self, cts_data):
-        """
-        reshapes and converts to df, mondful of missing smiles
-        """
-
-        formulas = list()
-        calculated_masses = list()
-        for inchi in [i[2] for i in cts_data]:
-
-            mol = Chem.MolFromInchi(inchi)
-            formula = CalcMolFormula(mol)
-            calculated_mass = ExactMolWt(mol)
-
-            formulas.append(formula)
-            calculated_masses.append(calculated_mass)
-
-        #monoisotopic masses will be negative here to screen out at future point
-        return pd.DataFrame({'inchikey': [i[0] for i in cts_data],
-                             'CID': [i[1] for i in cts_data],
-                             'inchi': [i[2] for i in cts_data],
-                             'smiles': ['' for _ in cts_data],
-                             'formula': formulas,
-                             'retrieved_mass': [-1 for _ in range(len(cts_data))],
-                             'calculated_mass': calculated_masses,
-                             'monoisotopic_mass': [self.formula_to_mass(i) for i in formulas],
-                             'source': ['cts' for _ in cts_data]})
-
-    def batch_group_generator(self, n_items, batch_size=10000, batches_per_group=10):
-        """
-        Generate groups of n batches for parallel processing
-        Maintains generator state across yields
+        Yields batches of index pair tuples from combinations(range(n_items), 2).
 
         Args:
-            n_items: Number of items to generate combinations for
-            batch_size: Number of pairs per batch
-            batches_per_group: Number of batches to yield together
+            n_items: Number of items to generate pairwise combinations for
+            batch_size: Number of (i, j) pairs per batch
 
         Yields:
-            List of batches, where each batch is a list of (i,j) tuples
+            List of (i, j) tuples of length <= batch_size
         """
-        batch_gen = self.batch_combinations(n_items, batch_size)
+        batch = []
+        for pair in combinations(range(n_items), 2):
+            batch.append(pair)
+            if len(batch) == batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
 
-        while True:
-            batch_group = []
-            for _ in range(batches_per_group):
-                try:
-                    batch_group.append(next(batch_gen))
-                except StopIteration:
-                    # No more batches
-                    if batch_group:
-                        yield batch_group
-                    return
-
-            yield batch_group
-
-    def parallel_sim_generation(self,
-                                inchi_bases: List,
-                                mols: List,
-                                mzs: List,
-                                sim_timeout: float = None):
+    def batch_sim_generation(self,
+                            inchi_bases: List,
+                            mols: List,
+                            mzs: List,
+                            max_groups:int = np.max):
+        
         """
-        generates/writes pairwise sims in batches when not 0
-
-        Args:
-            sim_timeout: per-FindMCES timeout in seconds (supports subsecond, e.g. 0.25). None disables.
+        iterates through index batches and writes to sqliteDB
         """
 
-        for batches in self.batch_group_generator(len(inchi_bases), batch_size = int(1e7)):
+        self.sim_db.write_inchikey_core_mapping([(inchi_bases[i], i) for i in range(len(inchi_bases))])
 
-            sim_res = Parallel(n_jobs = self.n_jobs)(
-                                delayed(self.calc_profile_similarity)(batch, mols, mzs, sim_timeout) for batch in batches)
-            
-            flattened_res = [item for sublist in sim_res for item in sublist]
+        try:
+            yielded = 0
+            for batch in self.batch_combinations(len(inchi_bases), batch_size = int(1e6)):
 
-            df_res = pd.DataFrame([[i[0],i[1],i[2],i[3]] for i in flattened_res])
+                sim_res, error_instances = self.calc_profile_similarity(batch, mols, mzs)
 
-            df_res.columns = ['query','target','mces','code']
+                self.sim_db.write_sims(sim_res)
 
-            df_res.to_csv(path = f'{self.output_directory}/fold_input_data.csv', mode = 'a', index = False)
+                self.sim_db.write_errors(error_instances)
 
-    def augment_hydrogen(self,
-                         formula: str, 
-                        add: bool = True):
-    
-        if 'H' not in formula:
-            raise ValueError('cannot correct formula lacking hydrogen')
-        
-        for i in range(len(formula)):
+                yielded += 1
+                if yielded == max_groups:
+                    break
 
-            if formula[i] == 'H' and formula[i+1].isdigit():
-
-                hydrogen_index = i
-                break
-        
-        int_length = 1
-        while hydrogen_index + int_length < len(formula) and formula[hydrogen_index + int_length].isdigit():
-
-            int_length +=1
-
-        if add:
-            formula = formula[:hydrogen_index + 1] \
-                    + str(int(formula[hydrogen_index + 1: hydrogen_index + int_length]) + 1) \
-                    + formula[hydrogen_index + int_length:]
-            
-        else:
-            formula = formula[:hydrogen_index + 1] \
-                    + str(int(formula[hydrogen_index + 1: hydrogen_index + int_length]) - 1) \
-                    + formula[hydrogen_index + int_length:]
-        
-        return formula
+        finally:
+            self.sim_db.close()
 
 
     def calc_profile_similarity(self,
                                 batch_inds: List[tuple],
-                                mols: List[Chem.Mol],
-                                mzs: List[set],
-                                sim_timeout: float = None):
+                                mols: List[bytes],
+                                mzs: List[set]):
 
         """
         prescreen and compute MCES if necessary in parallel
@@ -1076,75 +892,54 @@ class foldCreation:
         only returns a result if MCES is above threshold for storage help
 
         mzs should be nested list of all observed mzs rounded to some value from our db
+        mol_binaries should be list of binary mol representations from Mol.ToBinary()
         """
 
         batch_res = list()
+        error_instances = list()
 
         #same mz maps to same fold
         for i, j in batch_inds:
 
-            #3 encodes an mz match
-            if len(mzs[i].intersection(mzs[j])) > 0:
+            try:
+                #determine if any mzs overlap
+                if len(mzs[i].intersection(mzs[j])) > 0:
 
-                batch_res.append((i,j,1,3))
-        
-            else:
-
-                old_stderr = sys.stderr
-                sys.stderr = captured_stderr = StringIO()
-                forced_timeout = False
-
-                def _timeout_handler(signum, frame):
-                    raise TimeoutError()
-
-                try:
-                    if sim_timeout is not None:
-                        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-                        signal.setitimer(signal.ITIMER_REAL, sim_timeout)
-
-                    results = rdRascalMCES.FindMCES(mols[i], mols[j], self.rascal_options)
-                    stderr_output = captured_stderr.getvalue()
-
-                except TimeoutError:
-                    forced_timeout = True
-                    stderr_output = ""
-
-                finally:
-                    if sim_timeout is not None:
-                        signal.setitimer(signal.ITIMER_REAL, 0)
-                        signal.signal(signal.SIGALRM, old_handler)
-                    sys.stderr = old_stderr
-
-                if forced_timeout:
-                    batch_res.append((i, j, 1, 1))
-
-                elif len(results) == 0:
-                    sim = 0
+                    mz_overlap = 1
 
                 else:
+                    mz_overlap = 0
 
-                    sim = results[0].similarity
-                    timeout = results[0].timedOut
+                results = rdRascalMCES.FindMCES(mols[i], mols[j], self.rascal_options)
 
-                    #2 encodes the max bond pairs being exceeded
-                    if "bond pairs" in stderr_output:
-                        batch_res.append((i, j, 1, 2))
+                #keep in mind that table is expecting integer
+                sim = round(results[0].tier1Sim * 100)
 
-                    #1 encodes that we timed out
-                    elif timeout:
-                        batch_res.append((i, j, 1, 1))
+                batch_res.append((i, j, sim, mz_overlap))
 
-                    #we only care about the sim if it is greater than the tier1 threshold
-                    #0 encodes everything happened normally
-                    elif sim > self.rascal_options.similarityThreshold:
-                        batch_res.append((i,j,sim,0))
+            except Exception as e:
 
-        return batch_res
+                error_instances.append((i,j))
+
+        return batch_res, error_instances
     
-    def generate_mz_sets_by_inchi_base(self, 
+    def generate_base_prec_dict(self, bases, precs):
+
+        output_dict = dict()
+        for base, prec in zip(bases, precs):
+
+            if base in output_dict:
+                output_dict[base].add(prec)
+
+            else:
+                output_dict[base] = set([prec])
+
+        return output_dict
+
+    def generate_inchikey_base_mz_map(self, 
                                        base_retrieval_data: pd.DataFrame,
-                                       ms_data: pd.DataFrame,
-                                       digits: int = 2):
+                                       ms_data_inchikey_bases: List[str],
+                                       ms_data_precursors: List[float]):
         """ 
         Both datasets must have an "inchikey_base" column
 
@@ -1153,74 +948,42 @@ class foldCreation:
         and all ion species mzs presnt in the ms_data DF
         """
 
-        mz_sets = list()
-        for inchikey_base, retrieved_mz, calculated_mz, monoisotopic_mz in zip(base_retrieval_data['inchikey_base'],
-                                                                               base_retrieval_data['retrieved_mz'],
-                                                                               base_retrieval_data['calcualted_mz'],
-                                                                               base_retrieval_data['monoisotopic_mz']):
+        #first reduce ms_data to only the bases we have retrieved
+        retrieved_bases = set(base_retrieval_data['inchikey_base'])
+
+        seen_base_keys = list()
+        seen_base_mzs = list()
+
+        for key, mz in zip(ms_data_inchikey_bases, ms_data_precursors):
+
+            if key in retrieved_bases:
+                seen_base_keys.append(key)
+                seen_base_mzs.append(mz)
+
+        #then generate data
+        base_prec_dict = self.generate_base_prec_dict(seen_base_keys, seen_base_mzs)
+
+        for inchikey_base, retrieved_mass, calculated_mass, monoisotopic_mass in zip(base_retrieval_data['inchikey_base'],
+                                                                               base_retrieval_data['retrieved_mass'],
+                                                                               base_retrieval_data['calculated_mass'],
+                                                                               base_retrieval_data['monoisotopic_mass']):
             
             #get all theoretical mzs for uncharged parent
             mz_set = set()
 
             #bear in mind that retrieved mz from cts data wil be -1
-            if retrieved_mz > 0:
-                mz_set.add(round(retrieved_mz, digits))
+            if retrieved_mass > 0:
+                mz_set.add(round(retrieved_mass, self.mz_digits))
 
-            mz_set.add(round(calculated_mz, digits))
-            mz_set.add(round(monoisotopic_mz, digits))
+            mz_set.add(round(calculated_mass, self.mz_digits))
+            mz_set.add(round(monoisotopic_mass, self.mz_digits))
 
-            #get all empirical adduct species mzs
-            empirical_mzs = set([round(i,digits) for i in ms_data[ms_data['inchikey_base'] == inchikey_base]['precursor']])
+            if inchikey_base in base_prec_dict:
+                base_prec_dict[inchikey_base] = mz_set.union(base_prec_dict[inchikey_base])
 
-            mz_sets.append(mz_set.union(empirical_mzs))
+        return base_prec_dict
 
-        return mz_set
 
-    def parse_formula(self, formula):
-        """Parse a molecular formula string like 'H2O' into element counts: {'H': 2, 'O': 1}"""
-        composition = {}
-        for element, count in re.findall(r'([A-Z][a-z]?)(\d*)', formula):
-            if not element:
-                continue
-            composition[element] = composition.get(element, 0) + (int(count) if count else 1)
-        return composition
-
-    def formula_to_mass(self, formula):
-        """Convert a molecular formula string to its monoisotopic mass.
-
-        Args:
-            formula: e.g. 'C6H12O6', 'H2O', 'NaCl'
-        Returns:
-            monoisotopic mass in Da
-        """
-
-        MONOISOTOPIC_MASSES = {
-        'H':  1.00782503,  'He': 4.00260325,  'Li': 7.01600450,
-        'Be': 9.01218220,  'B': 11.00930540,  'C': 12.00000000,
-        'N': 14.00307401,  'O': 15.99491462,  'F': 18.99840322,
-        'Ne': 19.99244018, 'Na': 22.98922070, 'Mg': 23.98504170,
-        'Al': 26.98153860, 'Si': 27.97692653, 'P': 30.97376163,
-        'S': 31.97207100,  'Cl': 34.96885268, 'Ar': 39.96238312,
-        'K': 38.96370668,  'Ca': 39.96259098, 'Ti': 47.94794630,
-        'V': 50.94395950,  'Cr': 51.94050750, 'Mn': 54.93804510,
-        'Fe': 55.93493750, 'Co': 58.93319500, 'Ni': 57.93534290,
-        'Cu': 62.92959750, 'Zn': 63.92914220, 'Ga': 68.92557360,
-        'Ge': 73.92117780, 'As': 74.92159650, 'Se': 79.91652130,
-        'Br': 78.91833710, 'Kr': 83.91150700, 'Rb': 84.91178974,
-        'Sr': 87.90561210, 'Zr': 89.90470440, 'Mo': 97.90540820,
-        'Ag': 106.9050930, 'Cd': 113.9033585, 'Sn': 119.9022016,
-        'Sb': 120.9038157, 'Te': 129.9062244, 'I': 126.9044680,
-        'Cs': 132.9054519, 'Ba': 137.9052470, 'W': 183.9509312,
-        'Pt': 194.9647911, 'Au': 196.9665870, 'Hg': 201.9706430,
-        'Pb': 207.9766521, 'Bi': 208.9803987, 'U': 238.0507882}
-
-        composition = self.parse_formula(formula)
-        mass = 0.0
-        for element, count in composition.items():
-            if element not in MONOISOTOPIC_MASSES:
-                raise ValueError(f"Unknown element: {element}")
-            mass += MONOISOTOPIC_MASSES[element] * count
-        return mass
 
 
 
