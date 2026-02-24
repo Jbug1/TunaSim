@@ -15,10 +15,10 @@ from rdkit.Chem import rdRascalMCES
 from joblib import Parallel, delayed
 from itertools import combinations
 from TunaSimNetwork.annotationTools import simDB
+from rdkit.Chem.rdRascalMCES import RascalOptions
 
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
-
 
 warnings.filterwarnings('ignore')
 
@@ -812,24 +812,22 @@ class foldCreation:
     def __init__(self,
                  fold_names: list = [],
                  fold_sizes: list = [],
-                 rascal_options: rdRascalMCES.RascalOptions = None,
                  fold_by_exact_mass: bool = True,
                  datasets: list[str] = [],
                  dataset_fold_mappings: List[tuple] = [],
                  mz_digits: int = 2,
-                 n_jobs: int = 1,
                  sim_db: simDB = None,
+                 ppm_tol: float = 10.0,
                  ):
 
         self.fold_names = fold_names
         self.fold_sizes = fold_sizes
-        self.rascal_options = rascal_options
         self.fold_by_exact_mass = fold_by_exact_mass
         self.datasets = datasets
         self.dataset_fold_mappings = dataset_fold_mappings
         self.mz_digits = mz_digits
-        self.n_jobs = n_jobs
         self.sim_db = sim_db
+        self.ppm_tol = ppm_tol
 
     def batch_combinations(self, n_items, batch_size):
         """
@@ -867,18 +865,41 @@ class foldCreation:
             yielded = 0
             for batch in self.batch_combinations(len(inchi_bases), batch_size = int(1e6)):
 
-                sim_res, error_instances = self.calc_profile_similarity(batch, mols, mzs)
+                mces_res, mz_res, error_instances = self.calc_profile_similarity(batch, mols, mzs)
 
-                self.sim_db.write_sims(sim_res)
-
-                self.sim_db.write_errors(error_instances)
+                self.sim_db.write_table_results(mces_res, mz_res, error_instances)
 
                 yielded += 1
                 if yielded == max_groups:
                     break
 
+        except Exception as e:
+            raise e
+
         finally:
             self.sim_db.close()
+
+    @staticmethod
+    @njit
+    def mz_match_search(mzs1, mzs2, ppm_tol):
+
+        #quick checks to rule out obvious cases of no overlap
+        if mzs1[0] - mzs1[0] * ppm_tol / 1e6 > mzs2[-1]:
+            return False
+        
+        if mzs1[-1] + mzs1[-1] * ppm_tol / 1e6 < mzs2[0]:
+            return False
+
+        for i in mzs1:
+
+            dif = i * ppm_tol / 1e6
+            low =  i - dif
+            high = i + dif
+
+            if np.searchsorted(mzs2,low,'left') != np.searchsorted(mzs2,high,'left'):
+                return True
+            
+        return False
 
 
     def calc_profile_similarity(self,
@@ -895,7 +916,14 @@ class foldCreation:
         mol_binaries should be list of binary mol representations from Mol.ToBinary()
         """
 
-        batch_res = list()
+        #locking in RASCAL Options here given we are just doing upper bound
+        options = RascalOptions()
+        options.maxBondMatchPairs = 10000
+        options.similarityThreshold = 1.0
+        options.returnEmptyMCES = True
+
+        sim_res = list()
+        mz_res = list()
         error_instances = list()
 
         #same mz maps to same fold
@@ -903,25 +931,21 @@ class foldCreation:
 
             try:
                 #determine if any mzs overlap
-                if len(mzs[i].intersection(mzs[j])) > 0:
+                if foldCreation.mz_match_search(mzs[i], mzs[j], self.ppm_tol):
+                    mz_res.append((i, j))
 
-                    mz_overlap = 1
-
-                else:
-                    mz_overlap = 0
-
-                results = rdRascalMCES.FindMCES(mols[i], mols[j], self.rascal_options)
+                results = rdRascalMCES.FindMCES(mols[i], mols[j], options = options)
 
                 #keep in mind that table is expecting integer
                 sim = round(results[0].tier1Sim * 100)
 
-                batch_res.append((i, j, sim, mz_overlap))
+                sim_res.append((i, j, sim))
 
             except Exception as e:
 
                 error_instances.append((i,j))
 
-        return batch_res, error_instances
+        return sim_res, mz_res, error_instances
     
     def generate_base_prec_dict(self, bases, precs):
 
@@ -973,13 +997,21 @@ class foldCreation:
 
             #bear in mind that retrieved mz from cts data wil be -1
             if retrieved_mass > 0:
-                mz_set.add(round(retrieved_mass, self.mz_digits))
+                mz_set.add(round(retrieved_mass, 4))
 
-            mz_set.add(round(calculated_mass, self.mz_digits))
-            mz_set.add(round(monoisotopic_mass, self.mz_digits))
+            mz_set.add(round(calculated_mass, 4))
+            mz_set.add(round(monoisotopic_mass, 4))
 
             if inchikey_base in base_prec_dict:
-                base_prec_dict[inchikey_base] = mz_set.union(base_prec_dict[inchikey_base])
+
+                mzs_final = np.array(list(mz_set.union(base_prec_dict[inchikey_base])))
+                mzs_final.sort()
+                base_prec_dict[inchikey_base] = mzs_final
+
+        for fin in base_prec_dict.values():
+
+            if type(fin) == set:
+                raise ValueError('mismatch between retrieval data and empirical')
 
         return base_prec_dict
 

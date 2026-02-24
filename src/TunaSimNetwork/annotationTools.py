@@ -7,9 +7,10 @@ from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem.Descriptors import ExactMolWt
 import sqlite3
+from typing import List
 
 
-class compoundRetriever:
+class molRetriever:
 
     def __init__(self, inter_query_sleep_time: float = 0.2):
         self.inter_query_sleep_time = inter_query_sleep_time
@@ -248,44 +249,127 @@ class compoundRetriever:
 
 class simDB:
 
-    def __init__(self, db_path):
+    VALID_TABLES = {'mces', 'mz_matches', 'error_instances', 'inchikey_core_mapping'}
+
+    def __init__(self, 
+                 db_path: str):
+        
         self.db_path = db_path
 
+        #create sqliteDB with necessary tables if they do not already exist
         self._conn = sqlite3.connect(self.db_path)
-        self._conn.execute('PRAGMA journal_mode=WAL')
+      
         self._conn.execute('PRAGMA synchronous=NORMAL')
-        self._conn.execute(
-            'CREATE TABLE IF NOT EXISTS similarities (query INTEGER, target INTEGER, mces INTEGER, mz_match INTEGER)')
+        self._conn.execute('PRAGMA mmap_size=268435456')
+        self._conn.execute('PRAGMA cache_size=-64000')
+        self._conn.execute('PRAGMA temp_store=MEMORY')
         
+        self._conn.execute(
+            'CREATE TABLE IF NOT EXISTS mces (left INTEGER, right INTEGER, mces INTEGER)')
+
+        self._conn.execute(
+            'CREATE TABLE IF NOT EXISTS mz_matches (left INTEGER, right INTEGER)')
+
         self._conn.execute(
             'CREATE TABLE IF NOT EXISTS error_instances (query INTEGER, target INTEGER)')
-        
+
         self._conn.execute(
             'CREATE TABLE IF NOT EXISTS inchikey_core_mapping (inchikey_core TEXT, index_map INTEGER)')
+
+
+    def write_table_results(self, sim_results, mz_results, error_instances):
+        """
+        updates all 3 tables with the batch results
+        """
+
+        self._conn.executemany(
+            'INSERT INTO mces VALUES (?, ?, ?)', sim_results)
         
-
-    def write_sims(self, results):
         self._conn.executemany(
-            'INSERT INTO similarities VALUES (?, ?, ?, ?)', results)
-        self._conn.commit()
-
-    def write_errors(self, results):
+            'INSERT INTO mz_matches VALUES (?, ?)', mz_results)
+            
         self._conn.executemany(
-            'INSERT INTO error_instances VALUES (?, ?)', results)
+            'INSERT INTO error_instances VALUES (?, ?)', error_instances)
+        
         self._conn.commit()
+        
 
     def write_inchikey_core_mapping(self, results):
         self._conn.executemany(
             'INSERT INTO inchikey_core_mapping VALUES (?, ?)', results)
         self._conn.commit()
 
-    def index_sims(self):
+    def index_tables(self):
         self._conn.execute(
-            'CREATE INDEX IF NOT EXISTS idx_sims_mz_mces ON similarities (query, mz_match DESC, mces DESC)')
+            'CREATE INDEX IF NOT EXISTS idx_left_mces ON mces (left, mces DESC)')
+        self._conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_right_mces ON mces (right, mces DESC)')
+        self._conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_mz_left ON mz_matches (left)')
+        self._conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_mz_right ON mz_matches (right)')
         self._conn.commit()
 
+    def _validate_table(self, table_name):
+        if table_name not in self.VALID_TABLES:
+            raise ValueError(f"Invalid table name: {table_name}")
+
     def read_table(self, table_name):
+        self._validate_table(table_name)
         return pd.read_sql_query(f'SELECT * FROM {table_name}', self._conn)
+
+    def count_table(self, table_name):
+        self._validate_table(table_name)
+        cur = self._conn.execute(f'SELECT COUNT(*) FROM {table_name}')
+        return cur.fetchone()[0]
+
+    def query_mces(self, 
+                   query_ids: List[int], 
+                   query_left: bool =  True,
+                   mces_min: int =0):
+        """
+        query for either left or right, return ids above threshold for opposite side
+        """
+        query_side = "left" if query_left else "right"
+        return_side = "right" if query_left else "left"
+
+        placeholders = ','.join('?' * len(query_ids))
+
+        sql = f'SELECT {return_side} FROM mces WHERE {query_side} IN ({placeholders}) AND mces >= ?'
+        params = list(query_ids) + [mces_min]
+
+        return pd.read_sql_query(sql, self._conn, params=params)
+    
+    def query_mz_matches(self, 
+                        query_ids: List[int], 
+                        query_left: bool =  True):
+        """
+        query for either left or right, return ids for opposite side where match
+        """
+        query_side = "left" if query_left else "right"
+        return_side = "right" if query_left else "left"
+
+        placeholders = ','.join('?' * len(query_ids))
+
+        sql = f'SELECT {return_side} FROM mz_matches WHERE {query_side} IN ({placeholders})'
+
+        return pd.read_sql_query(sql, self._conn, params=list(query_ids))
+    
+
+    def query_mz_matches_batched(self, 
+                                query_ids: List[int], 
+                                query_left: bool = True,
+                                chunk_size: int = 500):
+        
+        frames = []
+        query_ids = list(query_ids)
+        for i in range(0, len(query_ids), chunk_size):
+
+            chunk = query_ids[i:i + chunk_size]
+            frames.append(self.query_mz_matches(chunk, query_left = query_left))
+
+        return pd.concat(frames, ignore_index=True)
+
 
     def close(self):
         self._conn.close()
