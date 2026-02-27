@@ -11,11 +11,9 @@ from logging import getLogger
 from numba import njit
 import warnings
 from rdkit import Chem
-from rdkit.Chem import rdRascalMCES
 from joblib import Parallel, delayed
 from itertools import combinations
 from TunaSimNetwork.annotationTools import simDB
-from rdkit.Chem.rdRascalMCES import RascalOptions
 
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
@@ -70,6 +68,32 @@ def compute_pair_scores(mz_a, mz_b, tolerance, units_ppm):
                 break
 
     return pairs[:count], scores[:count]
+
+@njit
+def mz_match_search(mzs1, mzs2, ppm_tol):
+
+    #catch exact match case
+    if ppm_tol == 0:
+
+        return len(set(mzs1).intersection(set(mzs2))) > 0
+
+    #quick checks to rule out obvious cases of no overlap
+    if mzs1[0] - mzs1[0] * ppm_tol / 1e6 > mzs2[-1]:
+        return False
+    
+    if mzs1[-1] + mzs1[-1] * ppm_tol / 1e6 < mzs2[0]:
+        return False
+
+    for i in mzs1:
+
+        dif = i * ppm_tol / 1e6
+        low =  i - dif
+        high = i + dif
+
+        if np.searchsorted(mzs2,low,'left') != np.searchsorted(mzs2,high,'left'):
+            return True
+        
+    return False
 
 
 def ppm(base, ppm):
@@ -807,6 +831,49 @@ class specCleaner:
         return output[output[:,0] > 0]
     
 
+def calc_mz_overlap_and_sim_bounds(batch_inds, inchis, mzs, ppm_tol):
+    """
+    Worker function for parallel MCES computation.
+    Uses tier1Sim as threshold to efficiently compute tier2Sim.
+    Imports RDKit inside to avoid pickling Boost.Python objects.
+    """
+    from rdkit.Chem import MolFromInchi
+    from rdkit.Chem.rdRascalMCES import FindMCES, RascalOptions
+    from rdkit import RDLogger
+    RDLogger.DisableLog('rdApp.*')
+
+    options = RascalOptions()
+    options.maxBondMatchPairs = 0
+    options.similarityThreshold = 1.0
+    options.returnEmptyMCES = True
+    options.timeOut = 1
+
+    #regenerate mol objects
+    mols = [MolFromInchi(i) for i in inchis]
+
+    sim_res = []
+    mz_res = []
+    error_instances = []
+
+    for i, j in batch_inds:
+        try:
+            if mz_match_search(mzs[i], mzs[j], ppm_tol):
+                mz_res.append((i, j))
+
+            # use tier1 as threshold to short-circuit full MCES for tier2
+            options.similarityThreshold = FindMCES(mols[i], mols[j], opts=options)[0].tier1Sim
+            sim = round(FindMCES(mols[i], mols[j], opts=options)[0].tier2Sim * 100)
+            sim_res.append((i, j, sim))
+
+            # reset threshold for next pair
+            options.similarityThreshold = 1.0
+
+        except Exception:
+            error_instances.append((i, j))
+            options.similarityThreshold = 1.0
+
+    return sim_res, mz_res, error_instances
+
 class foldCreation:
 
     def __init__(self,
@@ -818,6 +885,7 @@ class foldCreation:
                  mz_digits: int = 2,
                  sim_db: simDB = None,
                  ppm_tol: float = 10.0,
+                 n_jobs: int = 1,
                  ):
 
         self.fold_names = fold_names
@@ -828,6 +896,7 @@ class foldCreation:
         self.mz_digits = mz_digits
         self.sim_db = sim_db
         self.ppm_tol = ppm_tol
+        self.n_jobs = n_jobs
 
     def batch_combinations(self, n_items, batch_size):
         """
@@ -849,28 +918,60 @@ class foldCreation:
         if batch:
             yield batch
 
+    def batch_combinations_grouped(self, n_items, batch_size):
+        """
+        Yields groups of n_jobs batches from batch_combinations.
+
+        Args:
+            n_items: Number of items to generate pairwise combinations for
+            batch_size: Number of (i, j) pairs per batch
+
+        Yields:
+            List of batches, where each batch is a list of (i, j) tuples.
+            Each yielded group has up to self.n_jobs batches.
+        """
+        group = []
+        for batch in self.batch_combinations(n_items, batch_size):
+            group.append(batch)
+            if len(group) == self.n_jobs:
+                yield group
+                group = []
+        if group:
+            yield group
+
     def batch_sim_generation(self,
-                            inchi_bases: List,
-                            mols: List,
+                            inchikey_bases: List,
+                            inchis: List,
                             mzs: List,
                             max_groups:int = np.max):
-        
+
         """
         iterates through index batches and writes to sqliteDB
         """
 
-        self.sim_db.write_inchikey_core_mapping([(inchi_bases[i], i) for i in range(len(inchi_bases))])
+        self.sim_db.write_inchikey_base_mapping([(inchikey_bases[i], i) for i in range(len(inchikey_bases))])
 
         try:
             yielded = 0
-            for batch in self.batch_combinations(len(inchi_bases), batch_size = int(1e6)):
+            for group in self.batch_combinations_grouped(len(inchikey_bases), batch_size = int(1e6)):
 
-                mces_res, mz_res, error_instances = self.calc_profile_similarity(batch, mols, mzs)
+                results = Parallel(n_jobs=self.n_jobs)(
+                    delayed(calc_mz_overlap_and_sim_bounds)(batch, inchis, mzs, self.ppm_tol)
+                    for batch in group
+                )
+
+                mces_res = []
+                mz_res = []
+                error_instances = []
+                for sim, mz, errors in results:
+                    mces_res.extend(sim)
+                    mz_res.extend(mz)
+                    error_instances.extend(errors)
 
                 self.sim_db.write_table_results(mces_res, mz_res, error_instances)
 
-                yielded += 1
-                if yielded == max_groups:
+                yielded += self.n_jobs
+                if yielded >= max_groups:
                     break
 
         except Exception as e:
@@ -879,74 +980,7 @@ class foldCreation:
         finally:
             self.sim_db.close()
 
-    @staticmethod
-    @njit
-    def mz_match_search(mzs1, mzs2, ppm_tol):
 
-        #quick checks to rule out obvious cases of no overlap
-        if mzs1[0] - mzs1[0] * ppm_tol / 1e6 > mzs2[-1]:
-            return False
-        
-        if mzs1[-1] + mzs1[-1] * ppm_tol / 1e6 < mzs2[0]:
-            return False
-
-        for i in mzs1:
-
-            dif = i * ppm_tol / 1e6
-            low =  i - dif
-            high = i + dif
-
-            if np.searchsorted(mzs2,low,'left') != np.searchsorted(mzs2,high,'left'):
-                return True
-            
-        return False
-
-
-    def calc_profile_similarity(self,
-                                batch_inds: List[tuple],
-                                mols: List[bytes],
-                                mzs: List[set]):
-
-        """
-        prescreen and compute MCES if necessary in parallel
-
-        only returns a result if MCES is above threshold for storage help
-
-        mzs should be nested list of all observed mzs rounded to some value from our db
-        mol_binaries should be list of binary mol representations from Mol.ToBinary()
-        """
-
-        #locking in RASCAL Options here given we are just doing upper bound
-        options = RascalOptions()
-        options.maxBondMatchPairs = 10000
-        options.similarityThreshold = 1.0
-        options.returnEmptyMCES = True
-
-        sim_res = list()
-        mz_res = list()
-        error_instances = list()
-
-        #same mz maps to same fold
-        for i, j in batch_inds:
-
-            try:
-                #determine if any mzs overlap
-                if foldCreation.mz_match_search(mzs[i], mzs[j], self.ppm_tol):
-                    mz_res.append((i, j))
-
-                results = rdRascalMCES.FindMCES(mols[i], mols[j], options = options)
-
-                #keep in mind that table is expecting integer
-                sim = round(results[0].tier1Sim * 100)
-
-                sim_res.append((i, j, sim))
-
-            except Exception as e:
-
-                error_instances.append((i,j))
-
-        return sim_res, mz_res, error_instances
-    
     def generate_base_prec_dict(self, bases, precs):
 
         output_dict = dict()
@@ -960,35 +994,18 @@ class foldCreation:
 
         return output_dict
 
-    def generate_inchikey_base_mz_map(self, 
-                                       base_retrieval_data: pd.DataFrame,
-                                       ms_data_inchikey_bases: List[str],
-                                       ms_data_precursors: List[float]):
+    def generate_mz_sets_by_inchikey(self, 
+                                       base_retrieval_data: pd.DataFrame):
+        
         """ 
-        Both datasets must have an "inchikey_base" column
-
-        created an ordered list of sets corresponding to all relevant m/z for that molecule (as determined by inchi)
-        relvant mzs are uncharged monoisotopic parent for that formula, heavy mz for specified isotopic composition,
-        and all ion species mzs presnt in the ms_data DF
+        creates set by key from the parent mass data
         """
 
-        #first reduce ms_data to only the bases we have retrieved
-        retrieved_bases = set(base_retrieval_data['inchikey_base'])
-
-        seen_base_keys = list()
-        seen_base_mzs = list()
-
-        for key, mz in zip(ms_data_inchikey_bases, ms_data_precursors):
-
-            if key in retrieved_bases:
-                seen_base_keys.append(key)
-                seen_base_mzs.append(mz)
-
         #then generate data
-        base_prec_dict = self.generate_base_prec_dict(seen_base_keys, seen_base_mzs)
+        #base_prec_dict = self.generate_base_prec_dict(seen_base_keys, seen_base_mzs)
+        mz_sets = list()
 
-        for inchikey_base, retrieved_mass, calculated_mass, monoisotopic_mass in zip(base_retrieval_data['inchikey_base'],
-                                                                               base_retrieval_data['retrieved_mass'],
+        for retrieved_mass, calculated_mass, monoisotopic_mass in zip(base_retrieval_data['retrieved_mass'],
                                                                                base_retrieval_data['calculated_mass'],
                                                                                base_retrieval_data['monoisotopic_mass']):
             
@@ -997,23 +1014,17 @@ class foldCreation:
 
             #bear in mind that retrieved mz from cts data wil be -1
             if retrieved_mass > 0:
-                mz_set.add(round(retrieved_mass, 4))
+                mz_set.add(round(retrieved_mass, 6))
 
-            mz_set.add(round(calculated_mass, 4))
-            mz_set.add(round(monoisotopic_mass, 4))
+            mz_set.add(round(calculated_mass, 6))
+            mz_set.add(round(monoisotopic_mass, 6))
 
-            if inchikey_base in base_prec_dict:
+            mz_set = np.array(list(mz_set))
+            mz_set.sort()
 
-                mzs_final = np.array(list(mz_set.union(base_prec_dict[inchikey_base])))
-                mzs_final.sort()
-                base_prec_dict[inchikey_base] = mzs_final
+            mz_sets.append(mz_set)
 
-        for fin in base_prec_dict.values():
-
-            if type(fin) == set:
-                raise ValueError('mismatch between retrieval data and empirical')
-
-        return base_prec_dict
+        return mz_sets
 
 
 

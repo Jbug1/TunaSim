@@ -249,7 +249,7 @@ class molRetriever:
 
 class simDB:
 
-    VALID_TABLES = {'mces', 'mz_matches', 'error_instances', 'inchikey_core_mapping'}
+    VALID_TABLES = {'mces', 'mz_matches', 'error_instances', 'inchikey_base_mapping'}
 
     def __init__(self, 
                  db_path: str):
@@ -258,12 +258,7 @@ class simDB:
 
         #create sqliteDB with necessary tables if they do not already exist
         self._conn = sqlite3.connect(self.db_path)
-      
-        self._conn.execute('PRAGMA synchronous=NORMAL')
-        self._conn.execute('PRAGMA mmap_size=268435456')
-        self._conn.execute('PRAGMA cache_size=-64000')
-        self._conn.execute('PRAGMA temp_store=MEMORY')
-        
+
         self._conn.execute(
             'CREATE TABLE IF NOT EXISTS mces (left INTEGER, right INTEGER, mces INTEGER)')
 
@@ -274,7 +269,7 @@ class simDB:
             'CREATE TABLE IF NOT EXISTS error_instances (query INTEGER, target INTEGER)')
 
         self._conn.execute(
-            'CREATE TABLE IF NOT EXISTS inchikey_core_mapping (inchikey_core TEXT, index_map INTEGER)')
+            'CREATE TABLE IF NOT EXISTS inchikey_base_mapping (inchikey_base TEXT, index_map INTEGER)')
 
 
     def write_table_results(self, sim_results, mz_results, error_instances):
@@ -294,9 +289,9 @@ class simDB:
         self._conn.commit()
         
 
-    def write_inchikey_core_mapping(self, results):
+    def write_inchikey_base_mapping(self, results):
         self._conn.executemany(
-            'INSERT INTO inchikey_core_mapping VALUES (?, ?)', results)
+            'INSERT INTO inchikey_base_mapping VALUES (?, ?)', results)
         self._conn.commit()
 
     def index_tables(self):
@@ -324,52 +319,183 @@ class simDB:
         return cur.fetchone()[0]
 
     def query_mces(self, 
-                   query_ids: List[int], 
+                   query_IDs: List[int], 
                    query_left: bool =  True,
-                   mces_min: int =0):
+                   mces_min: int = 0):
         """
-        query for either left or right, return ids above threshold for opposite side
+        query for either left or right, return IDs above threshold for opposite side
         """
         query_side = "left" if query_left else "right"
         return_side = "right" if query_left else "left"
 
-        placeholders = ','.join('?' * len(query_ids))
+        placeholders = ','.join('?' * len(query_IDs))
 
         sql = f'SELECT {return_side} FROM mces WHERE {query_side} IN ({placeholders}) AND mces >= ?'
-        params = list(query_ids) + [mces_min]
+        params = list(query_IDs) + [mces_min]
 
         return pd.read_sql_query(sql, self._conn, params=params)
     
     def query_mz_matches(self, 
-                        query_ids: List[int], 
+                        query_IDs: List[int], 
                         query_left: bool =  True):
         """
-        query for either left or right, return ids for opposite side where match
+        query for either left or right, return IDs for opposite side where match
         """
         query_side = "left" if query_left else "right"
         return_side = "right" if query_left else "left"
 
-        placeholders = ','.join('?' * len(query_ids))
+        placeholders = ','.join('?' * len(query_IDs))
 
         sql = f'SELECT {return_side} FROM mz_matches WHERE {query_side} IN ({placeholders})'
 
-        return pd.read_sql_query(sql, self._conn, params=list(query_ids))
+        return pd.read_sql_query(sql, self._conn, params=list(query_IDs))
     
 
     def query_mz_matches_batched(self, 
-                                query_ids: List[int], 
+                                query_IDs: List[int], 
                                 query_left: bool = True,
                                 chunk_size: int = 500):
         
         frames = []
-        query_ids = list(query_ids)
-        for i in range(0, len(query_ids), chunk_size):
+        query_IDs = list(query_IDs)
+        for i in range(0, len(query_IDs), chunk_size):
 
-            chunk = query_ids[i:i + chunk_size]
+            chunk = query_IDs[i:i + chunk_size]
             frames.append(self.query_mz_matches(chunk, query_left = query_left))
 
         return pd.concat(frames, ignore_index=True)
+    
+    def query_mces_batched(self, 
+                            query_IDs: List[int], 
+                            query_left: bool = True,
+                            chunk_size: int = 500,
+                            mces_min: int = 100):
+        
+        frames = []
+        query_IDs = list(query_IDs)
+        for i in range(0, len(query_IDs), chunk_size):
 
+            chunk = query_IDs[i:i + chunk_size]
+            frames.append(self.query_mces(chunk, query_left = query_left, mces_min = mces_min))
+
+        return pd.concat(frames, ignore_index=True)
+    
+    def cascading_query_mz(self, 
+                            query_IDs: List[int]):
+        """ 
+        repeatedly query for mz matches
+        """
+        
+        total_IDs = set()
+
+        while len(query_IDs) > 0:
+
+            #update the result set with query IDs at each pass
+            total_IDs = total_IDs.union(set(query_IDs))
+
+            left_res = self.query_mz_matches_batched(query_IDs = query_IDs, query_left = True)['right'].tolist()
+            right_res = self.query_mz_matches_batched(query_IDs = query_IDs, query_left = False)['left'].tolist()
+
+            #we want a list of all the new IDs recovered
+            #we can exclude the previously seen/searched IDs
+            query_IDs = list(set(left_res + right_res) - total_IDs)
+
+        return total_IDs
+    
+    def cascading_query_mces(self, 
+                            query_IDs: List[int],
+                            mces_min: int = 100):
+        """ 
+        repeatedly query mces
+        """
+        
+        total_IDs = set()
+
+        while len(query_IDs) > 0:
+
+            #update the result set with query IDs at each pass
+            total_IDs = total_IDs.union(set(query_IDs))
+
+            left_res = self.query_mces_batched(query_IDs = query_IDs, 
+                                               query_left = True, 
+                                               mces_min = mces_min)['right'].tolist()
+            
+            right_res = self.query_mces_batched(query_IDs = query_IDs, 
+                                                query_left = False, 
+                                                mces_min = mces_min)['left'].tolist()
+
+            #we want a list of all the new IDs recovered
+            #we can exclude the previously seen/searched IDs
+            query_IDs = list(set(left_res + right_res) - total_IDs)
+
+        return total_IDs
+    
+
+    def cascading_id_set_creation(self,
+                                  query_IDs: List[int],
+                                  mces_min: int = 100,
+                                  mces_increment: int = 1,
+                                  target_total_IDs: int = 0):
+        
+        """
+        recursively create id set for fold
+        """
+
+        if len(query_IDs) == 0:
+            raise ValueError('no queryIDs passed')
+        
+        if len(query_IDs) != len(set(query_IDs)):
+            raise ValueError('Query IDs contain redundant inputs')
+
+        if type(mces_min) != int or mces_min > 101 or mces_min < 1:
+            raise ValueError('mces min must be int between 1 and 101')
+        
+        if type(mces_increment) != int or mces_increment > 101 or mces_increment < 1:
+            raise ValueError('mces increment must be int between 1 and 101')
+
+        total_IDs = set()
+
+        #this loop will increment the mces_min and expand the set
+        while len(total_IDs) < target_total_IDs and len(query_IDs) > 0:
+
+            #update the result set with query IDs at each pass
+            total_IDs = total_IDs.union(set(query_IDs))
+
+            mz_res_IDs = self.cascading_query_mz(query_IDs = query_IDs)
+
+            mces_res_IDs = self.cascading_query_mces(query_IDs = mz_res_IDs,
+                                                     mces_min = mces_min)
+
+
+            #we want a list of all the new IDs recovered
+            #we can exclude the previously seen/searched IDs
+            query_IDs = list(mces_res_IDs - total_IDs)
+            total_IDs = total_IDs.union(mces_res_IDs)
+
+            #reduce the threshold for a match at each
+            mces_min -= mces_increment
+
+        #only inspect the IDs that resulted from the MCES step
+        query_IDs = list(mces_res_IDs - mz_res_IDs)
+
+        #cutoff loop does not increment mces_min in an attempt to finish construction
+        while len(query_IDs) > 0:
+
+            #update the result set with query IDs at each pass
+            total_IDs = total_IDs.union(set(query_IDs))
+
+            mz_res_IDs = self.cascading_query_mz(query_IDs = query_IDs)
+
+            mces_res_IDs = self.cascading_query_mces(query_IDs = mz_res_IDs,
+                                                     mces_min = mces_min)
+
+
+            #we want a list of all the new IDs recovered
+            #we can exclude the previously seen/searched IDs
+            query_IDs = list(mces_res_IDs - total_IDs)
+            total_IDs = total_IDs.union(mces_res_IDs)
+
+        return total_IDs
 
     def close(self):
         self._conn.close()
