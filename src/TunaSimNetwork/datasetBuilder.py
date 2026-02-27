@@ -78,11 +78,11 @@ def mz_match_search(mzs1, mzs2, ppm_tol):
         return len(set(mzs1).intersection(set(mzs2))) > 0
 
     #quick checks to rule out obvious cases of no overlap
-    if mzs1[0] - mzs1[0] * ppm_tol / 1e6 > mzs2[-1]:
-        return False
+    # if mzs1[0] - mzs1[0] * ppm_tol / 1e6 > mzs2[-1]:
+    #     return False
     
-    if mzs1[-1] + mzs1[-1] * ppm_tol / 1e6 < mzs2[0]:
-        return False
+    # if mzs1[-1] + mzs1[-1] * ppm_tol / 1e6 < mzs2[0]:
+    #     return False
 
     for i in mzs1:
 
@@ -943,7 +943,7 @@ class foldCreation:
                             inchikey_bases: List,
                             inchis: List,
                             mzs: List,
-                            max_groups:int = np.max):
+                            max_groups:int = None):
 
         """
         iterates through index batches and writes to sqliteDB
@@ -971,7 +971,7 @@ class foldCreation:
                 self.sim_db.write_table_results(mces_res, mz_res, error_instances)
 
                 yielded += self.n_jobs
-                if yielded >= max_groups:
+                if max_groups is not None and yielded >= max_groups:
                     break
 
         except Exception as e:
