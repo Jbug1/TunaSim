@@ -434,6 +434,7 @@ class simDB:
     def cascading_id_set_creation(self,
                                   query_IDs: List[int],
                                   mces_min: int = 100,
+                                  include_mz_IDs = True,
                                   mces_increment: int = 1,
                                   target_total_IDs: int = 0):
         
@@ -458,44 +459,38 @@ class simDB:
         #this loop will increment the mces_min and expand the set
         while len(total_IDs) < target_total_IDs and len(query_IDs) > 0:
 
-            #update the result set with query IDs at each pass
-            total_IDs = total_IDs.union(set(query_IDs))
+            if include_mz_IDs:
+                query_IDs = self.cascading_query_mz(query_IDs = query_IDs)
 
-            mz_res_IDs = self.cascading_query_mz(query_IDs = query_IDs)
-
-            mces_res_IDs = self.cascading_query_mces(query_IDs = mz_res_IDs,
-                                                     mces_min = mces_min)
-
+            mces_IDs = self.cascading_query_mces(query_IDs = query_IDs,
+                                                    mces_min = mces_min)
 
             #we want a list of all the new IDs recovered
             #we can exclude the previously seen/searched IDs
-            query_IDs = list(mces_res_IDs - total_IDs)
-            total_IDs = total_IDs.union(mces_res_IDs)
+            query_IDs = list(mces_IDs - total_IDs)
+            total_IDs = total_IDs.union(mces_IDs)
 
             #reduce the threshold for a match at each
             mces_min -= mces_increment
 
-        #only inspect the IDs that resulted from the MCES step
-        query_IDs = list(mces_res_IDs - mz_res_IDs)
+        #only inspect the IDs that are new
+        query_IDs = list(set(mces_IDs) - set(query_IDs))
 
         #cutoff loop does not increment mces_min in an attempt to finish construction
         while len(query_IDs) > 0:
 
-            #update the result set with query IDs at each pass
-            total_IDs = total_IDs.union(set(query_IDs))
+            if include_mz_IDs:
+                query_IDs = self.cascading_query_mz(query_IDs = query_IDs)
 
-            mz_res_IDs = self.cascading_query_mz(query_IDs = query_IDs)
-
-            mces_res_IDs = self.cascading_query_mces(query_IDs = mz_res_IDs,
-                                                     mces_min = mces_min)
-
+            mces_IDs = self.cascading_query_mces(query_IDs = query_IDs,
+                                                    mces_min = mces_min)
 
             #we want a list of all the new IDs recovered
             #we can exclude the previously seen/searched IDs
-            query_IDs = list(mces_res_IDs - total_IDs)
-            total_IDs = total_IDs.union(mces_res_IDs)
+            query_IDs = list(mces_IDs - total_IDs)
+            total_IDs = total_IDs.union(mces_IDs)
 
-        return total_IDs
+        return total_IDs, mces_min
 
     def close(self):
         self._conn.close()
