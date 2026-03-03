@@ -331,7 +331,7 @@ class simDB:
         placeholders = ','.join('?' * len(query_IDs))
 
         sql = f'SELECT {return_side} FROM mces WHERE {query_side} IN ({placeholders}) AND mces >= ?'
-        params = list(query_IDs) + [mces_min]
+        params = [int(x) for x in query_IDs] + [mces_min]
 
         return pd.read_sql_query(sql, self._conn, params=params)
     
@@ -348,7 +348,7 @@ class simDB:
 
         sql = f'SELECT {return_side} FROM mz_matches WHERE {query_side} IN ({placeholders})'
 
-        return pd.read_sql_query(sql, self._conn, params=list(query_IDs))
+        return pd.read_sql_query(sql, self._conn, params=[int(x) for x in query_IDs])
     
 
     def query_mz_matches_batched(self, 
@@ -429,14 +429,13 @@ class simDB:
             query_IDs = list(set(left_res + right_res) - total_IDs)
 
         return total_IDs
-    
+
 
     def cascading_id_set_creation(self,
                                   query_IDs: List[int],
-                                  mces_min: int = 100,
-                                  include_mz_IDs = True,
-                                  mces_increment: int = 1,
-                                  target_total_IDs: int = 0):
+                                  include_mz_IDs = False,
+                                  target_total_IDs: int = 0,
+                                  mces_cutoff: int = 0):
         
         """
         recursively create id set for fold
@@ -447,51 +446,55 @@ class simDB:
         
         if len(query_IDs) != len(set(query_IDs)):
             raise ValueError('Query IDs contain redundant inputs')
-
-        if type(mces_min) != int or mces_min > 101 or mces_min < 1:
-            raise ValueError('mces min must be int between 1 and 101')
         
-        if type(mces_increment) != int or mces_increment > 101 or mces_increment < 1:
-            raise ValueError('mces increment must be int between 1 and 101')
+        mces_min = 101
+        mces_increment = 1
 
-        total_IDs = set()
+        if mces_cutoff > 0: 
+            target_total_IDs = 1e10
+
+        total_IDs = self.count_table('inchikey_base_mapping')
 
         #this loop will increment the mces_min and expand the set
-        while len(total_IDs) < target_total_IDs and len(query_IDs) > 0:
-
-            if include_mz_IDs:
-                query_IDs = self.cascading_query_mz(query_IDs = query_IDs)
-
-            mces_IDs = self.cascading_query_mces(query_IDs = query_IDs,
-                                                    mces_min = mces_min)
-
-            #we want a list of all the new IDs recovered
-            #we can exclude the previously seen/searched IDs
-            query_IDs = list(mces_IDs - total_IDs)
-            total_IDs = total_IDs.union(mces_IDs)
+        while len(query_IDs) < min(target_total_IDs, total_IDs) and mces_min > mces_cutoff:
 
             #reduce the threshold for a match at each
             mces_min -= mces_increment
 
-        #only inspect the IDs that are new
-        query_IDs = list(set(mces_IDs) - set(query_IDs))
+            if include_mz_IDs:
+                query_IDs = self.cascading_query_mz(query_IDs = query_IDs)
+
+            query_IDs = self.cascading_query_mces(query_IDs = query_IDs,
+                                                    mces_min = mces_min)
 
         #cutoff loop does not increment mces_min in an attempt to finish construction
-        while len(query_IDs) > 0:
+        while True:
+
+            starting_length = len(query_IDs)
 
             if include_mz_IDs:
                 query_IDs = self.cascading_query_mz(query_IDs = query_IDs)
 
-            mces_IDs = self.cascading_query_mces(query_IDs = query_IDs,
+            query_IDs = self.cascading_query_mces(query_IDs = query_IDs,
                                                     mces_min = mces_min)
 
-            #we want a list of all the new IDs recovered
-            #we can exclude the previously seen/searched IDs
-            query_IDs = list(mces_IDs - total_IDs)
-            total_IDs = total_IDs.union(mces_IDs)
+            if len(query_IDs) == starting_length:
+                break
 
-        return total_IDs, mces_min
+        return query_IDs, mces_min
 
     def close(self):
         self._conn.close()
+
+
+class datasetWrapper:
+
+    def __init__(self,
+                 name,
+                 path):
+        
+        self.name = name
+        self.path = path
+
+        self.data = pd.read_pickle(path)
 

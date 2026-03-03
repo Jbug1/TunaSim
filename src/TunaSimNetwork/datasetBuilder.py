@@ -14,6 +14,7 @@ from rdkit import Chem
 from joblib import Parallel, delayed
 from itertools import combinations
 from TunaSimNetwork.annotationTools import simDB
+import random
 
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
@@ -879,21 +880,13 @@ class foldCreation:
     def __init__(self,
                  fold_names: list = [],
                  fold_sizes: list = [],
-                 fold_by_exact_mass: bool = True,
-                 datasets: list[str] = [],
-                 dataset_fold_mappings: List[tuple] = [],
-                 mz_digits: int = 2,
                  sim_db: simDB = None,
-                 ppm_tol: float = 10.0,
-                 n_jobs: int = 1,
+                 ppm_tol: float = 0,
+                 n_jobs: int = 4
                  ):
 
         self.fold_names = fold_names
         self.fold_sizes = fold_sizes
-        self.fold_by_exact_mass = fold_by_exact_mass
-        self.datasets = datasets
-        self.dataset_fold_mappings = dataset_fold_mappings
-        self.mz_digits = mz_digits
         self.sim_db = sim_db
         self.ppm_tol = ppm_tol
         self.n_jobs = n_jobs
@@ -1025,6 +1018,94 @@ class foldCreation:
             mz_sets.append(mz_set)
 
         return mz_sets
+    
+    def assign_inds_to_folds(self, 
+                             mces_cutoff: int, 
+                             dataset_fold_mappings: List[tuple],
+                             fold_names: List[str]
+                             ):
+        """
+        assigns all available indices to folds in order that they are passed
+        """
+
+        available_inds = set(self.sim_db.read_table('inchikey_base_mapping')['index_map'])
+        inds_by_fold = {i: set() for i in fold_names}
+
+        #first, ensure that if a dataset needs to be assigned to a fold, that it is put there
+        for dataset, fold in dataset_fold_mappings:
+
+            #this whole dataset belongs in a particular fold
+            if fold is not None:
+
+                converted_inds = set(self.convert_keys_to_inds(set(dataset.data['inchikey_base'])))
+                inds_by_fold[fold] = converted_inds
+
+                available_inds = available_inds - converted_inds 
+
+                #get cascaded inds
+                cascaded_inds, _ = self.sim_db.cascading_id_set_creation(inds_by_fold[fold], mces_cutoff = mces_cutoff)
+
+                #removed new inds from available
+                available_inds = available_inds - cascaded_inds
+
+                #add cascaded inds to set of fold IDs
+                inds_by_fold[fold] = inds_by_fold[fold].union(set(cascaded_inds))
+
+        #then, create cascading groups by adding inchis one by one
+        while len(available_inds) > 0:
+
+            #determine which fold is smallest
+            print([len(i) for i in inds_by_fold.values()])
+
+            smallest_group = list(inds_by_fold.keys())[np.argmin([len(i) for i in inds_by_fold.values()])]
+
+            #randomly select a new index
+            new_ind = np.random.choice(list(available_inds))
+
+            #remove it from the remaining set
+            available_inds.remove(new_ind)
+
+            #add it to the smallest fold
+            inds_by_fold[smallest_group].add(new_ind)
+
+            #get cascaded inds
+            cascaded_inds, cutoff_realized = self.sim_db.cascading_id_set_creation(inds_by_fold[smallest_group], mces_cutoff=mces_cutoff)
+
+            #removed new inds from available
+            available_inds = available_inds - cascaded_inds
+
+            #add cascaded inds to set of fold IDs
+            inds_by_fold[smallest_group] = inds_by_fold[smallest_group].union(set(cascaded_inds))
+
+
+    def convert_keys_to_inds(self, keys):
+        '''
+        given a list of keys, converts them to mapped inds
+        '''
+
+        mapping_dict = dict()
+        mapping = self.sim_db.read_table('inchikey_base_mapping')
+        for key, ind in zip(mapping['inchikey_base'], mapping['index_map']):
+
+            mapping_dict[key] = ind
+
+        inds= list()
+        for key in keys:
+
+
+            #keys may not be present in combined retrieval data used to populate mapping DB
+            if key in mapping_dict:
+                inds.append(mapping_dict[key])
+
+        return inds
+
+            
+
+
+
+
+
+
 
 
 
