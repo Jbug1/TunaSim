@@ -249,7 +249,7 @@ class molRetriever:
 
 class simDB:
 
-    VALID_TABLES = {'mces', 'mz_matches', 'error_instances', 'inchikey_base_mapping'}
+    VALID_TABLES = {'mces', 'error_instances', 'inchikey_base_mapping'}
 
     def __init__(self, 
                  db_path: str):
@@ -263,25 +263,19 @@ class simDB:
             'CREATE TABLE IF NOT EXISTS mces (left INTEGER, right INTEGER, mces INTEGER)')
 
         self._conn.execute(
-            'CREATE TABLE IF NOT EXISTS mz_matches (left INTEGER, right INTEGER)')
-
-        self._conn.execute(
             'CREATE TABLE IF NOT EXISTS error_instances (query INTEGER, target INTEGER)')
 
         self._conn.execute(
-            'CREATE TABLE IF NOT EXISTS inchikey_base_mapping (inchikey_base TEXT, index_map INTEGER)')
+            'CREATE TABLE IF NOT EXISTS inchikey_base_mapping (inchikey_base TEXT, inchi TEXT, index_map INTEGER)')
 
 
-    def write_table_results(self, sim_results, mz_results, error_instances):
+    def write_table_results(self, sim_results, error_instances):
         """
         updates all 3 tables with the batch results
         """
 
         self._conn.executemany(
             'INSERT INTO mces VALUES (?, ?, ?)', sim_results)
-        
-        self._conn.executemany(
-            'INSERT INTO mz_matches VALUES (?, ?)', mz_results)
             
         self._conn.executemany(
             'INSERT INTO error_instances VALUES (?, ?)', error_instances)
@@ -291,7 +285,7 @@ class simDB:
 
     def write_inchikey_base_mapping(self, results):
         self._conn.executemany(
-            'INSERT INTO inchikey_base_mapping VALUES (?, ?)', results)
+            'INSERT INTO inchikey_base_mapping VALUES (?, ?, ?)', results)
         self._conn.commit()
 
     def index_tables(self):
@@ -299,10 +293,6 @@ class simDB:
             'CREATE INDEX IF NOT EXISTS idx_left_mces ON mces (left, mces DESC)')
         self._conn.execute(
             'CREATE INDEX IF NOT EXISTS idx_right_mces ON mces (right, mces DESC)')
-        self._conn.execute(
-            'CREATE INDEX IF NOT EXISTS idx_mz_left ON mz_matches (left)')
-        self._conn.execute(
-            'CREATE INDEX IF NOT EXISTS idx_mz_right ON mz_matches (right)')
         self._conn.commit()
 
     def _validate_table(self, table_name):

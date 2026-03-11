@@ -70,32 +70,6 @@ def compute_pair_scores(mz_a, mz_b, tolerance, units_ppm):
 
     return pairs[:count], scores[:count]
 
-@njit
-def mz_match_search(mzs1, mzs2, ppm_tol):
-
-    #catch exact match case
-    if ppm_tol == 0:
-
-        return len(set(mzs1).intersection(set(mzs2))) > 0
-
-    #quick checks to rule out obvious cases of no overlap
-    # if mzs1[0] - mzs1[0] * ppm_tol / 1e6 > mzs2[-1]:
-    #     return False
-    
-    # if mzs1[-1] + mzs1[-1] * ppm_tol / 1e6 < mzs2[0]:
-    #     return False
-
-    for i in mzs1:
-
-        dif = i * ppm_tol / 1e6
-        low =  i - dif
-        high = i + dif
-
-        if np.searchsorted(mzs2,low,'left') != np.searchsorted(mzs2,high,'left'):
-            return True
-        
-    return False
-
 
 def ppm(base, ppm):
     """
@@ -832,12 +806,15 @@ class specCleaner:
         return output[output[:,0] > 0]
     
 
-def calc_mz_overlap_and_sim_bounds(batch_inds, inchis, mzs, ppm_tol):
+def calc_sim_bounds(batch_inds, inchis, inchikey_bases):
     """
     Worker function for parallel MCES computation.
     Uses tier1Sim as threshold to efficiently compute tier2Sim.
     Imports RDKit inside to avoid pickling Boost.Python objects.
+
+    has to be defined outside fold creation for picklability
     """
+
     from rdkit.Chem import MolFromInchi
     from rdkit.Chem.rdRascalMCES import FindMCES, RascalOptions
     from rdkit import RDLogger
@@ -853,18 +830,21 @@ def calc_mz_overlap_and_sim_bounds(batch_inds, inchis, mzs, ppm_tol):
     mols = [MolFromInchi(i) for i in inchis]
 
     sim_res = []
-    mz_res = []
     error_instances = []
 
     for i, j in batch_inds:
-        try:
-            if mz_match_search(mzs[i], mzs[j], ppm_tol):
-                mz_res.append((i, j))
 
-            # use tier1 as threshold to short-circuit full MCES for tier2
-            options.similarityThreshold = FindMCES(mols[i], mols[j], opts=options)[0].tier1Sim
-            sim = round(FindMCES(mols[i], mols[j], opts=options)[0].tier2Sim * 100)
-            sim_res.append((i, j, sim))
+        try:
+            #if the inchikey base is identical, connectivity is 1
+            #avoids uncommon edge cases of low score in inchi created mol
+            if inchikey_bases[i] == inchikey_bases[j]:
+                sim_res.append((i, j, 100))
+
+            else:
+                # use tier1 as threshold to short-circuit full MCES for tier2
+                options.similarityThreshold = FindMCES(mols[i], mols[j], opts=options)[0].tier1Sim
+                sim = round(FindMCES(mols[i], mols[j], opts=options)[0].tier2Sim * 100)
+                sim_res.append((i, j, sim))
 
             # reset threshold for next pair
             options.similarityThreshold = 1.0
@@ -873,22 +853,23 @@ def calc_mz_overlap_and_sim_bounds(batch_inds, inchis, mzs, ppm_tol):
             error_instances.append((i, j))
             options.similarityThreshold = 1.0
 
-    return sim_res, mz_res, error_instances
+    return sim_res, error_instances
 
 class foldCreation:
+    """ 
+    have removed mz overlap in fold creation to reduce complexity
+    """
 
     def __init__(self,
                  fold_names: list = [],
                  fold_sizes: list = [],
                  sim_db: simDB = None,
-                 ppm_tol: float = 0,
                  n_jobs: int = 4
                  ):
 
         self.fold_names = fold_names
         self.fold_sizes = fold_sizes
         self.sim_db = sim_db
-        self.ppm_tol = ppm_tol
         self.n_jobs = n_jobs
 
     def batch_combinations(self, n_items, batch_size):
@@ -942,14 +923,14 @@ class foldCreation:
         iterates through index batches and writes to sqliteDB
         """
 
-        self.sim_db.write_inchikey_base_mapping([(inchikey_bases[i], i) for i in range(len(inchikey_bases))])
+        self.sim_db.write_inchikey_base_mapping([(inchikey_bases[i], inchis[i], i) for i in range(len(inchikey_bases))])
 
         try:
             yielded = 0
             for group in self.batch_combinations_grouped(len(inchikey_bases), batch_size = int(1e6)):
 
                 results = Parallel(n_jobs=self.n_jobs)(
-                    delayed(calc_mz_overlap_and_sim_bounds)(batch, inchis, mzs, self.ppm_tol)
+                    delayed(calc_sim_bounds)(batch, inchis, mzs)
                     for batch in group
                 )
 
@@ -961,7 +942,7 @@ class foldCreation:
                     mz_res.extend(mz)
                     error_instances.extend(errors)
 
-                self.sim_db.write_table_results(mces_res, mz_res, error_instances)
+                self.sim_db.write_table_results(mces_res, error_instances)
 
                 yielded += self.n_jobs
                 if max_groups is not None and yielded >= max_groups:
@@ -987,37 +968,6 @@ class foldCreation:
 
         return output_dict
 
-    def generate_mz_sets_by_inchikey(self, 
-                                       base_retrieval_data: pd.DataFrame):
-        
-        """ 
-        creates set by key from the parent mass data
-        """
-
-        #then generate data
-        #base_prec_dict = self.generate_base_prec_dict(seen_base_keys, seen_base_mzs)
-        mz_sets = list()
-
-        for retrieved_mass, calculated_mass, monoisotopic_mass in zip(base_retrieval_data['retrieved_mass'],
-                                                                               base_retrieval_data['calculated_mass'],
-                                                                               base_retrieval_data['monoisotopic_mass']):
-            
-            #get all theoretical mzs for uncharged parent
-            mz_set = set()
-
-            #bear in mind that retrieved mz from cts data wil be -1
-            if retrieved_mass > 0:
-                mz_set.add(round(retrieved_mass, 6))
-
-            mz_set.add(round(calculated_mass, 6))
-            mz_set.add(round(monoisotopic_mass, 6))
-
-            mz_set = np.array(list(mz_set))
-            mz_set.sort()
-
-            mz_sets.append(mz_set)
-
-        return mz_sets
     
     def assign_inds_to_folds(self, 
                              mces_cutoff: int, 
@@ -1055,8 +1005,6 @@ class foldCreation:
         while len(available_inds) > 0:
 
             #determine which fold is smallest
-            print([len(i) for i in inds_by_fold.values()])
-
             smallest_group = list(inds_by_fold.keys())[np.argmin([len(i) for i in inds_by_fold.values()])]
 
             #randomly select a new index
@@ -1076,6 +1024,8 @@ class foldCreation:
 
             #add cascaded inds to set of fold IDs
             inds_by_fold[smallest_group] = inds_by_fold[smallest_group].union(set(cascaded_inds))
+
+        return inds_by_fold
 
 
     def convert_keys_to_inds(self, keys):
