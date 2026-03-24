@@ -84,9 +84,9 @@ class trainSetBuilder:
     def __init__(self,
                  query_input_path: str,
                  target_input_path: str,
-                 dataset_names: list,
+                 fold_identity_mapping: dict,
                  identity_column: str,
-                 dataset_max_sizes: list,
+                 dataset_max_sizes: dict,
                  outputs_directory: str,
                  ppm_match_window: int,
                  self_search: bool = False,
@@ -95,7 +95,7 @@ class trainSetBuilder:
     
         self.query_input_path = query_input_path
         self.target_input_path = target_input_path
-        self.dataset_names = dataset_names
+        self.fold_identity_mapping = fold_identity_mapping
         self.identity_column = identity_column
         self.dataset_max_sizes = dataset_max_sizes
         self.outputs_directory = outputs_directory
@@ -124,7 +124,7 @@ class trainSetBuilder:
         
     def create_match_datasets(self):
 
-        for dataset in self.dataset_names:
+        for dataset in self.fold_identity_mapping.keys():
          
             query = pd.read_pickle(f'{self.outputs_directory}/raw/query/{dataset}.pkl')
             target = pd.read_pickle(f'{self.outputs_directory}/raw/target/{dataset}.pkl')
@@ -134,17 +134,14 @@ class trainSetBuilder:
             
             self.create_matches_df(query, 
                                     target,
-                                    self.dataset_max_sizes[self.dataset_names.index(dataset)],
+                                    self.dataset_max_sizes[dataset],
                                     f'{self.outputs_directory}/matched/{dataset}.pkl')
 
     def break_datasets(self):
 
         query = pd.read_pickle(self.query_input_path)
 
-        query_identities = set(query[self.identity_column])
-
         self.log.info(f'query length: {query.shape[0]}')
-        self.log.info(f'query unique identities: {len(query_identities)}')
 
         target = pd.read_pickle(self.target_input_path)
         target = target[['precursor', 'mode', 'spectrum', self.identity_column]]
@@ -154,16 +151,9 @@ class trainSetBuilder:
         else:
             target['queryID'] = [-1 for _ in range(target.shape[0])]
 
-        target_identities = list(set(target[self.identity_column]))
-
         self.log.info(f'target length: {query.shape[0]}')
-        self.log.info(f'target unique identities: {len(query_identities)}')
 
-        all_identities = list(query_identities.union(target_identities))
-        self.log.info(f'total unique identities: {len(target_identities)}')
-
-        self.create_and_write_sub_dfs(all_identities,
-                                      'target',
+        self.create_and_write_sub_dfs('target',
                                       target)
         
         self.log.info('wrote all sub dfs for target')
@@ -172,8 +162,7 @@ class trainSetBuilder:
         query = query[['precursor', 'mode', 'spectrum', self.identity_column]]
         query['queryID'] = list(range(query.shape[0]))
         
-        self.create_and_write_sub_dfs(all_identities,
-                                      'query',
+        self.create_and_write_sub_dfs('query',
                                       query
                                       )
         
@@ -181,32 +170,30 @@ class trainSetBuilder:
 
         self.create_match_datasets()
 
-    def create_and_write_sub_dfs(self, all_identities, name, df):
+    def create_and_write_sub_dfs(self, name, df):
 
-        #build the different sets of identities
-        identity_sets = list()
-        assigned_inds = list()
-        for i in range(len(self.dataset_names)):
-
-            identity_sets.append(set(all_identities[int(i * len(all_identities) / len(self.dataset_names)): 
-                                       int((i + 1) *len(all_identities) / len(self.dataset_names))]))
-            
-            assigned_inds.append(list())
+        assigned_inds = dict()
             
         identities = df[self.identity_column].tolist()
+        fold_names = list(self.fold_identity_mapping.keys())
         for i, identity in zip(list(range(len(identities))), identities):
 
-            for j in range(len(identity_sets)):
+            for j in fold_names:
 
-                if identity in identity_sets[j]:
+                if identity in self.fold_identity_mapping[j]:
 
-                    assigned_inds[j].append(i)
+                    if j in assigned_inds:
+                        assigned_inds[j].append(i)
+
+                    else:
+                        assigned_inds[j] = [i]
+
                     break
 
-        for i in range(len(assigned_inds)):
+        for key, value in assigned_inds.items():
 
-            sub = df.iloc[assigned_inds[i]]
-            sub.to_pickle(f'{self.outputs_directory}/raw/{name}/{self.dataset_names[i]}.pkl')
+            sub = df.iloc[value]
+            sub.to_pickle(f'{self.outputs_directory}/raw/{name}/{key}.pkl')
 
     def create_matches_df(self,
                           query_df, 
@@ -219,6 +206,9 @@ class trainSetBuilder:
 
         edited to also include inchiKey match as a field
         """
+
+        max_chunk_size = 1e7
+        chunk = 1
 
         start = time.perf_counter()
 
@@ -309,6 +299,13 @@ class trainSetBuilder:
 
             if seen > max_size:
                 break
+
+            elif seen > max_chunk_size:
+
+                chunk_df = pd.concat(pieces)
+                chunk_df.to_pickle(outpath[:-4] + str(chunk) + outpath[-4:])
+                del (chunk_df)
+                pieces = list()
 
         chunk_df = pd.concat(pieces)
         chunk_df.to_pickle(outpath)
@@ -824,7 +821,6 @@ def calc_sim_bounds(batch_inds, inchis, inchikey_bases):
     options.maxBondMatchPairs = 0
     options.similarityThreshold = 1.0
     options.returnEmptyMCES = True
-    options.timeOut = 1
 
     #regenerate mol objects
     mols = [MolFromInchi(i) for i in inchis]
@@ -935,11 +931,9 @@ class foldCreation:
                 )
 
                 mces_res = []
-                mz_res = []
                 error_instances = []
-                for sim, mz, errors in results:
+                for sim, errors in results:
                     mces_res.extend(sim)
-                    mz_res.extend(mz)
                     error_instances.extend(errors)
 
                 self.sim_db.write_table_results(mces_res, error_instances)

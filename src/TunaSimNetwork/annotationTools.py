@@ -271,7 +271,7 @@ class simDB:
 
     def write_table_results(self, sim_results, error_instances):
         """
-        updates all 3 tables with the batch results
+        updates all tables with the batch results
         """
 
         self._conn.executemany(
@@ -298,6 +298,30 @@ class simDB:
     def _validate_table(self, table_name):
         if table_name not in self.VALID_TABLES:
             raise ValueError(f"Invalid table name: {table_name}")
+        
+    def convert_inds_to_identities(self, inds):
+
+        inds_map = self.read_table('inchikey_base_mapping')
+
+        output = dict({'train': set(),
+              'val': set(),
+              'test': set()})
+
+        for base, ind in zip(inds_map['inchikey_base'], inds_map['index_map']):
+
+            flag = False
+            for fold in ['train','val','test']:
+
+                if ind in inds[fold]:
+
+                    output[fold].add(base)
+
+                    flag = True
+
+            if not flag:
+                raise ValueError(f'ind {ind} not present in any fold')
+            
+        return output
 
     def read_table(self, table_name):
         self._validate_table(table_name)

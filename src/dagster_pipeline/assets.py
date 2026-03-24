@@ -52,10 +52,12 @@ def cleaned_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeline
 
     raw["spectrum"] = cleaner.clean_spectra(raw["spectrum"], raw["precursor"])
 
+    #clear out spectra of zero length after cleaning
+    raw = raw.loc[[True if len(i) > 0 else False for i in raw['spectrum']]]
+
     output_path = os.path.join(_asset_dir(pipeline_config, "cleaned_dataset"), "cleaned.pkl")
     raw.to_pickle(output_path)
     context.log.info(f"Saved cleaned dataset to {output_path}")
-
 
 @dg.asset(
     deps=[cleaned_dataset],
@@ -70,13 +72,15 @@ def retrieved_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeli
     context.log.info(f"Retrieving annotations for {len(all_keys)} unique InChIKeys")
 
     retriever = molRetriever()
-    combined_df, errored_keys = retriever.get_annotations_for_inchikeys(all_keys)
+    retrieved_df, errored_keys = retriever.get_annotations_for_inchikeys(all_keys)
 
     if errored_keys:
-        context.log.warning(f"{len(errored_keys)} keys failed retrieval")
+        context.log.info(f"{len(errored_keys)} keys failed retrieval")
+
+    context.log.info(f"{len(retrieved_df)} keys retrieved")
 
     output_path = os.path.join(_asset_dir(pipeline_config, "retrieved_dataset"), "retrieved.csv")
-    combined_df.to_csv(output_path, index=False)
+    retrieved_df.to_csv(output_path, index=False)
     context.log.info(f"Saved retrieved dataset to {output_path}")
 
 
@@ -154,8 +158,14 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
         fold_names=cfg.fold_names,
     )
 
+    identities_by_fold = folder.convert_inds_to_keys(inds_by_fold)
+
     for fold_name, inds in inds_by_fold.items():
         context.log.info(f"  {fold_name}: {len(inds)} compounds")
+
+    output_path = os.path.join(_asset_dir(pipeline_config, "fold_assignments"), "fold_assignments_ind.pkl")
+    with open(output_path, "wb") as f:
+        pickle.dump(inds_by_fold, f)
 
     output_path = os.path.join(_asset_dir(pipeline_config, "fold_assignments"), "fold_assignments.pkl")
     with open(output_path, "wb") as f:
@@ -175,16 +185,15 @@ def training_datasets(context: dg.AssetExecutionContext, pipeline_config: Pipeli
     output_dir = _asset_dir(pipeline_config, "training_datasets")
     _archive_config(context, pipeline_config, pipeline_config.fold_datasets_config_path, "training_datasets")
 
-    # query and target both come from fold_assignments output
-    folds_dir = _asset_dir(pipeline_config, "fold_assignments")
-    query_input_path = os.path.join(folds_dir, "fold_assignments.pkl")
-    target_input_path = os.path.join(folds_dir, "fold_assignments.pkl")
+    # query and target both come from cleaned df
+    query_input_path = os.path.join(_asset_dir(pipeline_config, "cleaned_dataset"), "cleaned.pkl")
+    target_input_path = os.path.join(_asset_dir(pipeline_config, "cleaned_dataset"), "cleaned.pkl")
 
     builder = trainSetBuilder(
         query_input_path=query_input_path,
         target_input_path=target_input_path,
         dataset_max_sizes=cfg.dataset_max_sizes,
-        dataset_names=cfg.dataset_names,
+        fold_identity_mapping = pd.read_pickle(os.path.join(_asset_dir(pipeline_config, "fold_assignments"), "fold_assignments.pkl")),
         identity_column=cfg.identity_column,
         outputs_directory=output_dir,
         ppm_match_window=cfg.ppm_match_window,

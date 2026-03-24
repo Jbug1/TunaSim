@@ -1,0 +1,220 @@
+[32m2026-03-11 08:10:21 -0400[0m - dagster - [34mDEBUG[0m - __ASSET_JOB - 15d42668-a0c4-474d-8f82-87add95f7ec1 - 4963 - LOGS_CAPTURED - Started capturing logs in process (pid: 4963).
+[32m2026-03-11 08:10:21 -0400[0m - dagster - [34mDEBUG[0m - __ASSET_JOB - 15d42668-a0c4-474d-8f82-87add95f7ec1 - 4963 - mces_database - STEP_START - Started execution of step "mces_database".
+[32m2026-03-11 08:10:22 -0400[0m - dagster - [34mINFO[0m - __ASSET_JOB - 15d42668-a0c4-474d-8f82-87add95f7ec1 - mces_database - Config archived to /Users/jonahpoczobutt/projects/TunaRes/pipeline_output/mces_database
+[32m2026-03-11 08:10:22 -0400[0m - dagster - [34mINFO[0m - __ASSET_JOB - 15d42668-a0c4-474d-8f82-87add95f7ec1 - mces_database - Loaded 55552 compounds from combined dataset
+[32m2026-03-11 08:10:22 -0400[0m - dagster - [34mINFO[0m - __ASSET_JOB - 15d42668-a0c4-474d-8f82-87add95f7ec1 - mces_database - Starting pairwise MCES computation (55552 compounds, 4 workers)
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /var/folders/5m/x744wd9118v_slyjdnmgqr0r0000gn/T/joblib_memmapping_folder_4963_8e5814564ed24c3d90dbec0999c2790b_74541034e05947769bf37e74604e5d81 for automatic cleanup: unknown resource type folder
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-r33l6ufi for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-2oa3zpmn for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-3tyb2d16 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-tewi7dkd for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-knz9ua0e for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-ozw4gl8c for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /var/folders/5m/x744wd9118v_slyjdnmgqr0r0000gn/T/joblib_memmapping_folder_4963_8e5814564ed24c3d90dbec0999c2790b_8092bfbfec7c4a568acb4de953b18acb for automatic cleanup: unknown resource type folder
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-tyl65639 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-sripho51 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-lte13aw3 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-la4rex7z for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-la4rex7z for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-lte13aw3 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-sripho51 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-tyl65639 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-2oa3zpmn for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-3tyb2d16 for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-tewi7dkd for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-knz9ua0e for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-ozw4gl8c for automatic cleanup: unknown resource type semlock
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /loky-4963-r33l6ufi for automatic cleanup: unknown resource type semlock
+[32m2026-03-11 08:10:26 -0400[0m - dagster - [34mERROR[0m - [31m__ASSET_JOB - 15d42668-a0c4-474d-8f82-87add95f7ec1 - 4963 - mces_database - STEP_FAILURE - Execution of step "mces_database" failed.
+
+dagster._core.errors.DagsterExecutionStepExecutionError: Error occurred while executing op "mces_database"::
+
+AttributeError: Cannot set unknown attribute 'timeOut'
+
+Stack Trace:
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/dagster/_core/execution/plan/utils.py", line 57, in op_execution_error_boundary
+    yield
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/dagster/_utils/__init__.py", line 394, in iterate_with_context
+    next_output = next(iterator)
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/dagster/_core/execution/plan/compute_generator.py", line 135, in _coerce_op_compute_fn_to_iterator
+    result = invoke_compute_fn(
+        fn, context, kwargs, context_arg_provided, config_arg_class, resource_arg_mapping
+    )
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/dagster/_core/execution/plan/compute_generator.py", line 115, in invoke_compute_fn
+    return fn(context, **args_to_pass) if context_arg_provided else fn(**args_to_pass)
+           ~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonahpoczobutt/projects/TunaSim/src/dagster_pipeline/assets.py", line 108, in mces_database
+    folder.batch_sim_generation(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        inchikey_bases=inchikey_bases,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        inchis=inchis,
+        ^^^^^^^^^^^^^^
+        mzs=inchikey_bases,  # calc_sim_bounds uses this as inchikey_bases for identity check
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/jonahpoczobutt/projects/TunaSim/src/TunaSimNetwork/datasetBuilder.py", line 952, in batch_sim_generation
+    raise e
+  File "/Users/jonahpoczobutt/projects/TunaSim/src/TunaSimNetwork/datasetBuilder.py", line 932, in batch_sim_generation
+    results = Parallel(n_jobs=self.n_jobs)(
+        delayed(calc_sim_bounds)(batch, inchis, mzs)
+        for batch in group
+    )
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 2072, in __call__
+    return output if self.return_generator else list(output)
+                                                ~~~~^^^^^^^^
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 1682, in _get_outputs
+    yield from self._retrieve()
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 1784, in _retrieve
+    self._raise_error_fast()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 1859, in _raise_error_fast
+    error_job.get_result(self.timeout)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 758, in get_result
+    return self._return_or_raise()
+           ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 773, in _return_or_raise
+    raise self._result
+
+The above exception was caused by the following exception:
+joblib.externals.loky.process_executor._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/externals/loky/process_executor.py", line 490, in _process_worker
+    r = call_item()
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/externals/loky/process_executor.py", line 291, in __call__
+    return self.fn(*self.args, **self.kwargs)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/site-packages/joblib/parallel.py", line 607, in __call__
+    return [func(*args, **kwargs) for func, args, kwargs in self.items]
+            ~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/jonahpoczobutt/projects/TunaSim/src/TunaSimNetwork/datasetBuilder.py", line 827, in calc_sim_bounds
+    options.timeOut = 1
+    ^^^^^^^^^^^^^^^
+AttributeError: Cannot set unknown attribute 'timeOut'
+"""
+[0m
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /var/folders/5m/x744wd9118v_slyjdnmgqr0r0000gn/T/joblib_memmapping_folder_4963_8e5814564ed24c3d90dbec0999c2790b_8092bfbfec7c4a568acb4de953b18acb for automatic cleanup: unknown resource type folder
+Traceback (most recent call last):
+  File "/Users/jonahpoczobutt/anaconda3/envs/TunaSim/lib/python3.13/multiprocessing/resource_tracker.py", line 371, in main
+    raise ValueError(
+        f'Cannot register {name} for automatic cleanup: '
+        f'unknown resource type {rtype}')
+ValueError: Cannot register /var/folders/5m/x744wd9118v_slyjdnmgqr0r0000gn/T/joblib_memmapping_folder_4963_8e5814564ed24c3d90dbec0999c2790b_74541034e05947769bf37e74604e5d81 for automatic cleanup: unknown resource type folder

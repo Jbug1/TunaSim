@@ -19,7 +19,7 @@ defs = dg.Definitions(
     resources={
         "pipeline_config": PipelineConfig(
             base_output_dir="/Users/jonahpoczobutt/projects/TunaRes/pipeline_output",
-            raw_input_path="/Users/jonahpoczobutt/projects/raw_data/highres_pickles/test_combined.pkl",
+            raw_input_path="/Users/jonahpoczobutt/projects/raw_data/highres_pickles/nist23_metlin_combined.pkl",
             cleaning_config_path=f"{CONFIGS}/cleanDatasetConfig.py",
             fold_inputs_config_path=f"{CONFIGS}/foldInputsConfig.py",
             fold_datasets_config_path=f"{CONFIGS}/foldDatasetsConfig.py",
