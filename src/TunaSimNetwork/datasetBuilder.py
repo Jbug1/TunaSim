@@ -131,11 +131,13 @@ class trainSetBuilder:
 
             #shuffling query ensures good coverage of different identities if we are limiting dataset size
             query = query.sample(frac = 1)
+
+            os.makedirs(f'{self.outputs_directory}/matched/{dataset}')
             
             self.create_matches_df(query, 
                                     target,
                                     self.dataset_max_sizes[dataset],
-                                    f'{self.outputs_directory}/matched/{dataset}.pkl')
+                                    f'{self.outputs_directory}/matched/{dataset}/data.pkl')
 
     def break_datasets(self):
 
@@ -304,12 +306,17 @@ class trainSetBuilder:
 
                 chunk_df = pd.concat(pieces)
                 chunk_df.to_pickle(outpath[:-4] + str(chunk) + outpath[-4:])
+
                 del (chunk_df)
+
                 pieces = list()
+                total_seen += seen
+                seen = 0
 
         chunk_df = pd.concat(pieces)
         chunk_df.to_pickle(outpath)
         
+        total_seen += seen
         self.log.info(f'match info for {outpath}')
         self.log.info(f'time: {round((time.perf_counter() - start)/60, 4)} minutes to complete')
         self.log.info(f'total number of query spectra considered: {seen_}')

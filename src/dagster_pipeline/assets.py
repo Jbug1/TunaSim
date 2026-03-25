@@ -169,7 +169,7 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
 
     output_path = os.path.join(_asset_dir(pipeline_config, "fold_assignments"), "fold_assignments.pkl")
     with open(output_path, "wb") as f:
-        pickle.dump(inds_by_fold, f)
+        pickle.dump(identities_by_fold, f)
 
     context.log.info(f"Fold assignments saved to {output_path}")
 
