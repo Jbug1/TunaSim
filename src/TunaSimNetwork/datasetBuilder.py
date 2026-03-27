@@ -146,7 +146,7 @@ class trainSetBuilder:
         self.log.info(f'query length: {query.shape[0]}')
 
         target = pd.read_pickle(self.target_input_path)
-        target = target[['precursor', 'mode', 'spectrum', self.identity_column]]
+        target = target[['precursor', 'mode', 'spectrum', 'source', self.identity_column]]
         
         if self.self_search:
             target['queryID'] = list(range(target.shape[0]))
@@ -161,7 +161,7 @@ class trainSetBuilder:
         self.log.info('wrote all sub dfs for target')
 
         query = pd.read_pickle(self.query_input_path)
-        query = query[['precursor', 'mode', 'spectrum', self.identity_column]]
+        query = query[['precursor', 'mode', 'spectrum', 'source', self.identity_column]]
         query['queryID'] = list(range(query.shape[0]))
         
         self.create_and_write_sub_dfs('query',
@@ -226,6 +226,7 @@ class trainSetBuilder:
         target_neg.sort_values(by='precursor', inplace=True)
 
         seen = 0
+        total_seen = 0
         seen_ = 0
         unmatched = 0
         pieces = list()
@@ -297,7 +298,7 @@ class trainSetBuilder:
             within_range["score"] = identity == within_range[self.identity_column]
             within_range['queryID'] = queryID
 
-            pieces.append(within_range[['queryID', self.identity_column, 'query', 'target', 'score']])
+            pieces.append(within_range[['source', 'queryID', self.identity_column, 'query', 'target', 'score']])
 
             if seen > max_size:
                 break
@@ -312,6 +313,8 @@ class trainSetBuilder:
                 pieces = list()
                 total_seen += seen
                 seen = 0
+
+                chunk += 1
 
         chunk_df = pd.concat(pieces)
         chunk_df.to_pickle(outpath)
