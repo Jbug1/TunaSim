@@ -1,3 +1,0 @@
-[32m2026-03-23 18:02:52 -0400[0m - dagster - [34mDEBUG[0m - __ASSET_JOB - f3cce3ca-e58f-4327-b987-e67319d1e5be - 15362 - LOGS_CAPTURED - Started capturing logs in process (pid: 15362).
-[32m2026-03-23 18:02:52 -0400[0m - dagster - [34mDEBUG[0m - __ASSET_JOB - f3cce3ca-e58f-4327-b987-e67319d1e5be - 15362 - training_datasets - STEP_START - Started execution of step "training_datasets".
-[32m2026-03-23 18:02:53 -0400[0m - dagster - [34mINFO[0m - __ASSET_JOB - f3cce3ca-e58f-4327-b987-e67319d1e5be - training_datasets - Config archived to /Users/jonahpoczobutt/projects/TunaRes/pipeline_output/training_datasets
