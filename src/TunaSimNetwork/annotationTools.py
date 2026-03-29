@@ -299,29 +299,55 @@ class simDB:
         if table_name not in self.VALID_TABLES:
             raise ValueError(f"Invalid table name: {table_name}")
         
-    def convert_inds_to_identities(self, inds):
+    def convert_inds_dict_to_identities(self, inds_dict):
+        """
+        convert a dictionary with fold mappings to actual keys
+
+        meant to work with inds_by_fold output object
+        """
 
         inds_map = self.read_table('inchikey_base_mapping')
 
-        output = dict({'train': set(),
-              'val': set(),
-              'test': set()})
+        output = {fold: set() for fold in inds_dict.keys()}
 
         for base, ind in zip(inds_map['inchikey_base'], inds_map['index_map']):
 
             flag = False
-            for fold in ['train','val','test']:
+            for key, fold_indices in inds_dict.values():
 
-                if ind in inds[fold]:
+                if ind in fold_indices:
 
-                    output[fold].add(base)
+                    output[key].add(base)
 
+                    if flag:
+                        raise ValueError(f'ind {ind} present in multiple folds')
+                    
                     flag = True
 
             if not flag:
                 raise ValueError(f'ind {ind} not present in any fold')
             
         return output
+    
+    def convert_keys_to_inds(self, keys):
+        '''
+        given a list of keys, converts them to mapped inds
+        '''
+
+        mapping_dict = dict()
+        mapping = self.read_table('inchikey_base_mapping')
+        for key, ind in zip(mapping['inchikey_base'], mapping['index_map']):
+
+            mapping_dict[key] = ind
+
+        inds= list()
+        for key in keys:
+
+            #keys may not be present in combined retrieval data used to populate mapping DB
+            if key in mapping_dict:
+                inds.append(mapping_dict[key])
+
+        return inds
 
     def read_table(self, table_name):
         self._validate_table(table_name)

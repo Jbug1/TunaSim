@@ -16,23 +16,30 @@ def _asset_dir(pipeline_config: PipelineConfig, asset_name: str) -> str:
 
 
 def _setup_file_logging(pipeline_config: PipelineConfig, asset_name: str) -> logging.FileHandler:
-    """Add a file handler to the root logger that writes to the asset's output directory.
-    Returns the handler so it can be removed after the asset completes."""
+    """Add a file handler to the root logger and the dagster logger so that both
+    library code (via root) and asset code (via context.log / dagster) write to
+    the asset's log file.  Returns the handler so it can be removed later."""
     out_dir = _asset_dir(pipeline_config, asset_name)
     log_path = os.path.join(out_dir, f"{asset_name}.log")
     handler = logging.FileHandler(log_path, mode="w")
     handler.setLevel(logging.INFO)
     handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+
     root = logging.getLogger()
     root.addHandler(handler)
     if root.level > logging.INFO:
         root.setLevel(logging.INFO)
+
+    dagster_logger = logging.getLogger("dagster")
+    dagster_logger.addHandler(handler)
+
     return handler
 
 
 def _teardown_file_logging(handler: logging.FileHandler):
     """Remove and close the file handler added by _setup_file_logging."""
     logging.getLogger().removeHandler(handler)
+    logging.getLogger("dagster").removeHandler(handler)
     handler.close()
 
 
@@ -194,10 +201,10 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
             fold_names=cfg.fold_names,
         )
 
-        identities_by_fold = folder.convert_inds_to_keys(inds_by_fold)
+        identities_by_fold = folder.sim_db.convert_inds_dict_to_identities(inds_by_fold)
 
         for fold_name, inds in inds_by_fold.items():
-            context.log.info(f"  {fold_name}: {len(inds)} compounds")
+            context.log.info(f"  {fold_name}: {len(inds)} identities")
 
         output_path = os.path.join(_asset_dir(pipeline_config, "fold_assignments"), "fold_assignments_ind.pkl")
         with open(output_path, "wb") as f:

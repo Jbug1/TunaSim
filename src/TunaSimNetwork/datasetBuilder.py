@@ -1031,28 +1031,6 @@ class foldCreation:
 
         return inds_by_fold
 
-
-    def convert_keys_to_inds(self, keys):
-        '''
-        given a list of keys, converts them to mapped inds
-        '''
-
-        mapping_dict = dict()
-        mapping = self.sim_db.read_table('inchikey_base_mapping')
-        for key, ind in zip(mapping['inchikey_base'], mapping['index_map']):
-
-            mapping_dict[key] = ind
-
-        inds= list()
-        for key in keys:
-
-
-            #keys may not be present in combined retrieval data used to populate mapping DB
-            if key in mapping_dict:
-                inds.append(mapping_dict[key])
-
-        return inds
-
             
 
 
