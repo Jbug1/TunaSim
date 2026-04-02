@@ -39,32 +39,28 @@ class tunaSimTrainer:
 
     def __init__(self,
             name: str,
-            init_vals: dict = {},
             n_inits_per_bound: int = 1,
             learning_rate: List[float] = 0.01,
             max_iter: int = 1e5,
-            bounds_collection: list = None,
+            func_bound_details: List[tuple] = None,
             groupby_column: str = None,
-            balance_column: str = None):
-        
-        self.function_space = tunaSim
+            balance_column: str = None,
+            match_proportion = 1.0):
 
         self.name = name
-        self.init_vals = init_vals
         self.n_inits_per_bound = n_inits_per_bound
-        self.bounds_collection = bounds_collection
+        self.func_bound_details = func_bound_details
         self.max_iter = int(max_iter)
         self.n_iter = 0
         self.learning_rate = learning_rate
         self.groupby_column = groupby_column
         self.balance_column = balance_column
+        self.match_proportion = match_proportion
         self.trained = False
 
         self.balance_flag = 0
 
         self.log = getLogger(__name__)
-        
-        self.init_vals = init_vals
         self.final_function = None
 
     def map_to_minus_1(self, *args):
@@ -86,9 +82,9 @@ class tunaSimTrainer:
         self.initializations = list()
         self.trained_funcs = list()
 
-        for bounds_set_name, bounds_set in self.bounds_collection.items():
+        for bounds_set_name, bounds_set, function_space, init_vals in self.func_bound_details:
 
-            bounds_set = [bounds_set[key] for key in self.init_vals]
+            bounds_set = [bounds_set[key] for key in init_vals]
 
             for _ in range(self.n_inits_per_bound):
 
@@ -96,10 +92,10 @@ class tunaSimTrainer:
 
                 self.build_inds_dict(train_data)
 
-                self.initializations.append(copy.deepcopy(self.init_vals))
+                self.initializations.append(copy.deepcopy(init_vals))
 
                 #create first function to be fit
-                self.function = self.function_space(**self.init_vals)
+                self.function = function_space(**init_vals)
 
                 start = time.time()
 
@@ -108,11 +104,6 @@ class tunaSimTrainer:
 
                 #add the trained function to collector for future inspection
                 self.trained_funcs.append(copy.deepcopy(self.function))
-
-                #if we are trying more than 1, we want to update init vals with random initialization
-                self.init_vals =  {key: np.random.uniform(bounds_set[i][0], bounds_set[i][1]) 
-                                for i, key 
-                                in list(enumerate(self.init_vals.keys()))}
                 
                 #add predictions and group by user provided columns
                 train_data['preds'] = self.function.predict_for_dataset(train_data)
@@ -137,6 +128,11 @@ class tunaSimTrainer:
                     self.final_function = copy.deepcopy(self.function)     
                 
                 self.log.info(f'trained function {_ + 1} with {bounds_set_name} in {round((time.time() - start) / 60,4)} minutes, AUC:{round(init_auc, 4)}')
+
+                #if we are trying more than 1, we want to update init vals with random initialization
+                init_vals =  {key: np.random.uniform(bounds_set[i][0], bounds_set[i][1]) 
+                                for i, key 
+                                in list(enumerate(init_vals.keys()))}
 
         self.log.info(f'selected final function in {round((time.time() - total_start) / 60,4)} minutes, AUC:{round(self.best_auc, 4)}')
 
@@ -231,11 +227,16 @@ class tunaSimTrainer:
 
             inds = self.zeros_dict[np.random.randint(self.num_0)]
 
+            return inds
+
         else:
 
             inds = self.ones_dict[np.random.randint(self.num_1)]
 
-        return np.random.permutation(inds)[:1 + int(self.match_density_sampler() * len(inds))]
+            #if we are downsampling, conduct randomized downsample for matches
+            inds = np.random.permutation(inds)[:1 + int(self.match_proportion * len(inds))]
+            
+            return inds
 
 
     def stoch_descent(self, train_data, bounds):

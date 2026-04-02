@@ -19,6 +19,7 @@ def _setup_file_logging(pipeline_config: PipelineConfig, asset_name: str) -> log
     """Add a file handler to the root logger and the dagster logger so that both
     library code (via root) and asset code (via context.log / dagster) write to
     the asset's log file.  Returns the handler so it can be removed later."""
+
     out_dir = _asset_dir(pipeline_config, asset_name)
     log_path = os.path.join(out_dir, f"{asset_name}.log")
     handler = logging.FileHandler(log_path, mode="w")
@@ -35,20 +36,17 @@ def _setup_file_logging(pipeline_config: PipelineConfig, asset_name: str) -> log
 
     return handler
 
-
 def _teardown_file_logging(handler: logging.FileHandler):
     """Remove and close the file handler added by _setup_file_logging."""
     logging.getLogger().removeHandler(handler)
     logging.getLogger("dagster").removeHandler(handler)
     handler.close()
 
-
 def _archive_config(context, pipeline_config: PipelineConfig, config_path: str, asset_name: str):
     """Copy the config file to the asset's output directory."""
     out_dir = _asset_dir(pipeline_config, asset_name)
     shutil.copy(config_path, out_dir)
     context.log.info(f"Config archived to {out_dir}")
-
 
 @dg.asset(
     description="Create output directory structure with subdirectories for each pipeline asset.",
@@ -89,6 +87,7 @@ def cleaned_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeline
         output_path = os.path.join(_asset_dir(pipeline_config, "cleaned_dataset"), "cleaned.pkl")
         raw.to_pickle(output_path)
         context.log.info(f"Saved cleaned dataset to {output_path}")
+
     finally:
         _teardown_file_logging(log_handler)
 
@@ -117,9 +116,9 @@ def retrieved_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeli
         output_path = os.path.join(_asset_dir(pipeline_config, "retrieved_dataset"), "retrieved.csv")
         retrieved_df.to_csv(output_path, index=False)
         context.log.info(f"Saved retrieved dataset to {output_path}")
+
     finally:
         _teardown_file_logging(log_handler)
-
 
 @dg.asset(
     deps=[retrieved_dataset],
@@ -160,9 +159,9 @@ def mces_database(context: dg.AssetExecutionContext, pipeline_config: PipelineCo
         sim_db.close()
 
         context.log.info(f"MCES database saved and indexed at {db_path}")
+
     finally:
         _teardown_file_logging(log_handler)
-
 
 @dg.asset(
     deps=[mces_database],
@@ -176,6 +175,7 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
 
     log_handler = _setup_file_logging(pipeline_config, "fold_assignments")
     try:
+
         cfg = load_config(pipeline_config.fold_inputs_config_path)
         _archive_config(context, pipeline_config, pipeline_config.fold_inputs_config_path, "fold_assignments")
 
@@ -215,9 +215,9 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
             pickle.dump(identities_by_fold, f)
 
         context.log.info(f"Fold assignments saved to {output_path}")
+
     finally:
         _teardown_file_logging(log_handler)
-
 
 @dg.asset(
     deps=[fold_assignments],
@@ -252,5 +252,6 @@ def training_datasets(context: dg.AssetExecutionContext, pipeline_config: Pipeli
         builder.break_datasets()
 
         context.log.info(f"Training datasets created in {output_dir}")
+
     finally:
         _teardown_file_logging(log_handler)

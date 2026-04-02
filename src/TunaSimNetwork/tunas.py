@@ -7,29 +7,6 @@ def sigmoid(z):
     
     return 1/(1 + np.exp(-z))
 
-#jit funcs for reweighting intensities
-@njit
-def smooth_reweight_grads(array,
-                        a,
-                        b):
-    
-    """ flexible exponenet simple reweight"""
-    
-    b_component = np.power(array, b)
-    res = a * b_component
-
-    return res, b_component[0], res[0] * np.log(np.float64(array[0] + 1e-7))
-
-@njit
-def smooth_reweight(array,
-                    a,
-                    b):
-                        
-    """ flexible exponenet simple reweight"""
-
-
-    return a * np.power(array, b)
-
 
 class tunaSim:
 
@@ -40,18 +17,16 @@ class tunaSim:
                 target_intensity_b: float = None,
                 sim_a: float = 0,
                 sim_b: float= 1,
-                add_norm_b: float = 0,
                 ms2_da: float = 0.05,
                 ms2_ppm: float = None):
         
 
         self.query_intensity_a = query_intensity_a
-        self.query_intensity_b = query_intensity_b
+        self.query_intensity_b = query_intensity_a
         self.target_intensity_a = target_intensity_a
         self.target_intensity_b = target_intensity_b
         self.sim_a = sim_a
         self.sim_b = sim_b
-        self.add_norm_b = add_norm_b
         self.ms2_da = ms2_da
         self.ms2_ppm = ms2_ppm
 
@@ -60,7 +35,7 @@ class tunaSim:
                            'query_intensity_a',
                            'query_intensity_b',
                            'target_intensity_a',
-                           'target_intensity_b' ]
+                           'target_intensity_b']
         
         self.grad_vals = np.zeros(6)
 
@@ -113,6 +88,7 @@ class tunaSim:
         
         #set reweighted query and target and update reweight param gradients
         if grads:
+            
             query, q_int_a_grad, q_int_b_grad  = tunaSim.smooth_reweight_grads(query, 
                                                                       self.query_intensity_a, 
                                                                       self.query_intensity_b)
@@ -261,16 +237,14 @@ class tunaDif(tunaSim):
     def sub_predict(query,
                     target,
                     dif_a,
-                    dif_b,
-                    add_norm_b
+                    dif_b
                     ): 
         """ 
         When no gradients are necessary, simply implement the sim function given 
         some terms
         """   
 
-        return sigmoid(np.sum(((dif_a * np.power(np.abs(query - target), dif_b)) / 
-                               np.power(query + target, add_norm_b))))
+        return sigmoid(np.sum(((dif_a * np.power(np.abs(query - target), dif_b)))))
 
 
 class tunaMult(tunaSim):
@@ -332,7 +306,7 @@ class tunaMult(tunaSim):
 
         mult_term = mult_a * mult_term
 
-        grad_vals[1] = np.nsum(mult_term * np.log(mults)) #mult_b
+        grad_vals[1] = np.nansum(mult_term * np.log(mults)) #mult_b
 
         #calculate component gradients w.r.t. each side of input
         #chain rule
@@ -369,11 +343,10 @@ class tunaMult(tunaSim):
     def sub_predict(query,
                     target,
                     sim_a,
-                    sim_b,
-                    add_norm_b
+                    sim_b
                     ):    
 
-        return sigmoid(np.sum(((sim_a * np.power(query * target, sim_b))) / np.power(query + target, add_norm_b)))
+        return sigmoid(np.sum(((sim_a * np.power(query * target, sim_b))))) 
     
 
 class baseShellSim:

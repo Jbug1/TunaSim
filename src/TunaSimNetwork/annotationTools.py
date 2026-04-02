@@ -313,7 +313,7 @@ class simDB:
         for base, ind in zip(inds_map['inchikey_base'], inds_map['index_map']):
 
             flag = False
-            for key, fold_indices in inds_dict.values():
+            for key, fold_indices in inds_dict.items():
 
                 if ind in fold_indices:
 
@@ -329,7 +329,7 @@ class simDB:
             
         return output
     
-    def convert_keys_to_inds(self, keys):
+    def convert_identities_to_inds(self, keys):
         '''
         given a list of keys, converts them to mapped inds
         '''

@@ -84,13 +84,13 @@ class ensemble_shell(ensembleLayer):
 
         super().__init__(candidates = [])
 
-    def fit(self):
+    def fit(self, *args):
 
         pass
 
     def predict(self, data):
 
-        data['preds'] = [1 for i in len(data)]
+        data['preds'] = [1 for _ in len(data)]
 
         return data
 
@@ -281,8 +281,8 @@ class groupAdjustmentLayer:
 class tunaSimLayer:
 
     def __init__(self,
-                 trainers,
-                 residual_downsample_percentile: float,
+                 trainers: List = None,
+                 residual_downsample_percentile: int = 0,
                  inference_jobs: int = 1,
                  inference_chunk_size = 1e6):
         
@@ -381,8 +381,6 @@ class tunaSimLayer:
             output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
             
         dataset = dataset.iloc[np.concatenate(output_inds),:-1]
-
-        dataset.to_pickle('/Users/jonahpoczobutt/projects/TunaRes/network_results/downsampled_data.pkl')
 
         #make sure to leave newly added id column out of returned result
         return dataset

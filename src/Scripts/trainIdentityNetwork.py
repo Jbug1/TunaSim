@@ -1,7 +1,6 @@
 #main script to run network training
 from logging import getLogger, basicConfig
 from importlib.util import spec_from_file_location, module_from_spec
-from TunaSimNetwork.datasetBuilder import trainSetBuilder
 from TunaSimNetwork.networks import IdentityMatchNetwork
 from TunaSimNetwork import layers
 from sys import argv
@@ -26,25 +25,6 @@ def main(config_path):
 
     logger.info(f'instantiated log and copied config')
 
-    if config.build_datasets:
-
-        trainSetBuilder_ = trainSetBuilder(query_input_path = config.query_input_path,
-                                        target_input_path = config.target_input_path,
-                                        dataset_max_sizes = config.dataset_max_sizes,
-                                        dataset_names = config.dataset_names,
-                                        identity_column = config.identity_column,
-                                        outputs_directory = config.results_directory,
-                                        ppm_match_window = config.ppm_match_window,
-                                        tolerance = config.tolerance,
-                                        units_ppm = config.units_ppm
-                                        )
-        
-        trainSetBuilder_.make_directory_structure()
-        
-        trainSetBuilder_.break_datasets()
-
-        logger.info('finished dataset creation')
-
     #create layer objects
     tunasim_layer = layers.tunaSimLayer(trainers = config.tunaSim_trainers,
                                      residual_downsample_percentile = config.residual_downsample_percentile,
@@ -55,17 +35,19 @@ def main(config_path):
                                           selection_method = config.selection_method,
                                           data_column_str = 'tuna')
 
-    # ensemble_layer = layers.ensemble_shell()
+    ensemble_layer = layers.ensemble_shell()
     
     query_adjustment_layer = layers.groupAdjustmentLayer(candidates = config.query_adjustment_candidates,
                                                          selection_method = config.selection_method,
                                                          groupby_column = ['queryID'],
                                                          data_column_str = 'top_from_next')
+    
+    query_adjustment_layer = None
 
     #create network
-    network = IdentityMatchNetwork(train_path = f'{config.results_directory}/matched/train.pkl',
-                                   val_1_path = f'{config.results_directory}/matched/val_1.pkl',
-                                   val_2_path = f'{config.results_directory}/matched/val_2.pkl',
+    network = IdentityMatchNetwork(train_path = config.train_path,
+                                   val_1_path = config.val1_path,
+                                   val_2_path = config.val2_path,
                                    intermediate_outputs_path = f'{config.results_directory}/intermediate_outputs',
                                    tunaSim_layer = tunasim_layer,
                                    ensemble_layer = ensemble_layer,

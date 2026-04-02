@@ -237,8 +237,8 @@ class trainSetBuilder:
         precursors_neg = target_neg['precursor'].to_numpy()
 
         #retain only necessary columns
-        target_neg = target_neg[['queryID', 'spectrum', self.identity_column]]
-        target_pos = target_pos[['queryID', 'spectrum', self.identity_column]]
+        target_neg = target_neg[['source','queryID', 'spectrum', self.identity_column]]
+        target_pos = target_pos[['source','queryID', 'spectrum', self.identity_column]]
 
         rows = zip([i for i in range(len(query_df))],
                    query_df['precursor'], 
@@ -991,7 +991,7 @@ class foldCreation:
             #this whole dataset belongs in a particular fold
             if fold is not None:
 
-                converted_inds = set(self.convert_keys_to_inds(set(dataset.data['inchikey_base'])))
+                converted_inds = set(self.sim_db.convert_identities_to_inds(set(dataset.data['inchikey_base'])))
                 inds_by_fold[fold] = converted_inds
 
                 available_inds = available_inds - converted_inds 
