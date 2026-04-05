@@ -6,6 +6,7 @@ from collections import deque
 import time
 from logging import getLogger
 from numba import njit
+from TunaSimNetwork.layers import tunaSimLayer
 from sklearn.metrics import roc_auc_score
 
 @njit
@@ -82,6 +83,14 @@ class tunaSimTrainer:
         self.initializations = list()
         self.trained_funcs = list()
 
+        #if match proportion is less than 1, we need to evaluate on a subset of the data
+        if self.match_proportion != 1:
+
+            eval_data = tunaSimLayer.grouped_downsample(train_data, self.match_proportion, self.groupby_column)
+
+        else:
+            eval_data = train_data
+
         for bounds_set_name, bounds_set, function_space, init_vals in self.func_bound_details:
 
             bounds_set = [bounds_set[key] for key in init_vals]
@@ -106,9 +115,8 @@ class tunaSimTrainer:
                 self.trained_funcs.append(copy.deepcopy(self.function))
                 
                 #add predictions and group by user provided columns
-                train_data['preds'] = self.function.predict_for_dataset(train_data)
-                tops = train_data.sort_values(by = self.groupby_column + ['preds'], ascending = False)
-                tops = tops.groupby(self.groupby_column).first()
+                eval_data['preds'] = self.function.predict_for_dataset(eval_data)
+                tops = eval_data.drop(columns=['query','target']).groupby(self.groupby_column).max()
 
                 #get the auc on train data for this trained function
                 try:
@@ -244,7 +252,7 @@ class tunaSimTrainer:
         Implement gradient descent for model tuning
         func must take: match, query, target
         """
-
+     
         for _ in range(int(self.max_iter)):
 
             index = self.get_match_rows()
@@ -270,6 +278,8 @@ class tunaSimTrainer:
             step = grad * loss_grad * self.learning_rate
 
             updated = getattr(self.function, key) - step
+
+            #print(key, round(getattr(self.function, key),4), round(pred_val,4), score, round(grad,4), round(loss_grad,4), round(step, 4), round(updated,4))
 
             #set updated value given constraints1
             setattr(self.function, key, min(max(bounds[0], updated), bounds[1]))

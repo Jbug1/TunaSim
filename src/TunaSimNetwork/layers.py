@@ -364,7 +364,8 @@ class tunaSimLayer:
 
         self.trainers = [trainer for trainer in self.trainers if trainer.trained == True]
 
-    def grouped_downsample(self, dataset, downsample_proportion):
+    @staticmethod
+    def grouped_downsample(dataset, downsample_proportion, groupby_column):
         """ 
         retain a subset of the dataset as grouped by the groupby column of interest
         """
@@ -376,11 +377,12 @@ class tunaSimLayer:
         dataset['id'] = [i for i in range(dataset.shape[0])]
 
         #for each group, reatin some % of indices
-        for _, inds in dataset.groupby(self.trainers[0].groupby_column):
+        for _, inds in dataset.groupby(groupby_column):
 
             output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
             
-        dataset = dataset.iloc[np.concatenate(output_inds),:-1]
+        dataset.drop(columns = ['id'], inplace = True)
+        dataset = dataset.iloc[np.concatenate(output_inds)]
 
         #make sure to leave newly added id column out of returned result
         return dataset
@@ -390,11 +392,12 @@ class tunaSimLayer:
         generate predictions on full datasets
         """
 
+        groupby_column = self.trainers[0].groupby_column
+
         #downsample from dataset if necessary
-        dataset = self.grouped_downsample(dataset, downsample_proportion)
+        dataset = self.grouped_downsample(dataset, downsample_proportion, groupby_column)
 
         #to minimize params, we will infer the groupby column from trainers
-        groupby_column = self.trainers[0].groupby_column
         groupby_column_values = dataset[groupby_column].to_numpy()
 
         #for memory management purposes, break dataset into smaller chunks

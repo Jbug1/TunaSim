@@ -22,7 +22,7 @@ class tunaSim:
         
 
         self.query_intensity_a = query_intensity_a
-        self.query_intensity_b = query_intensity_a
+        self.query_intensity_b = query_intensity_b
         self.target_intensity_a = target_intensity_a
         self.target_intensity_b = target_intensity_b
         self.sim_a = sim_a
@@ -303,6 +303,11 @@ class tunaMult(tunaSim):
         #slight adjustment to take care of infinite grads...these result from no difference and therefore will be set to 0 anyways
         #calcualte gradient for similarity score params of dif and mult a(R -> R)
         grad_vals[0] = np.sum(mult_term) #mult_a
+
+        #shortcut for multiplication based sim if there are no peaks in common
+        if grad_vals[0] == 0:
+
+            return 0.5, grad_vals
 
         mult_term = mult_a * mult_term
 
