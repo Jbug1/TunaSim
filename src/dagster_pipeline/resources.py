@@ -22,10 +22,7 @@ ASSET_DIRS = [
 
 
 class PipelineConfig(ConfigurableResource):
-    """Pipeline configuration: base output directory, raw input, and per-asset config paths."""
-
-    base_output_dir: str
-    raw_input_path: str  # path to the combined raw pickle (external input)
+    """Pipeline configuration: per-asset config file paths."""
 
     cleaning_config_path: str
     fold_inputs_config_path: str

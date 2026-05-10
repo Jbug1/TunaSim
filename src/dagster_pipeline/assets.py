@@ -10,15 +10,18 @@ import pandas as pd
 from dagster_pipeline.resources import ASSET_DIRS, PipelineConfig, load_config
 
 
+def _base_output_dir(pipeline_config: PipelineConfig) -> str:
+    return load_config(pipeline_config.cleaning_config_path).base_output_dir
+
+
 def _asset_dir(pipeline_config: PipelineConfig, asset_name: str) -> str:
-    """Return the subdirectory for a given asset."""
-    return os.path.join(pipeline_config.base_output_dir, asset_name)
+    return os.path.join(_base_output_dir(pipeline_config), asset_name)
 
 
-def _setup_file_logging(pipeline_config: PipelineConfig, asset_name: str) -> logging.FileHandler:
-    """Add a file handler to the root logger and the dagster logger so that both
-    library code (via root) and asset code (via context.log / dagster) write to
-    the asset's log file.  Returns the handler so it can be removed later."""
+def _setup_file_logging(pipeline_config: PipelineConfig, asset_name: str, context: dg.AssetExecutionContext) -> logging.FileHandler:
+    """Add a file handler to the root logger and directly to context.log so that
+    both library code and asset context.log calls write to the asset's log file.
+    Returns the handler so it can be removed later."""
 
     out_dir = _asset_dir(pipeline_config, asset_name)
     log_path = os.path.join(out_dir, f"{asset_name}.log")
@@ -26,20 +29,21 @@ def _setup_file_logging(pipeline_config: PipelineConfig, asset_name: str) -> log
     handler.setLevel(logging.INFO)
     handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 
+    # Root logger captures library code that uses standard logging
     root = logging.getLogger()
     root.addHandler(handler)
     if root.level > logging.INFO:
         root.setLevel(logging.INFO)
 
-    dagster_logger = logging.getLogger("dagster")
-    dagster_logger.addHandler(handler)
+    # Dagster's DagsterLogManager has propagate=False, so add handler directly
+    context.log.addHandler(handler)
 
     return handler
 
-def _teardown_file_logging(handler: logging.FileHandler):
+def _teardown_file_logging(handler: logging.FileHandler, context: dg.AssetExecutionContext):
     """Remove and close the file handler added by _setup_file_logging."""
     logging.getLogger().removeHandler(handler)
-    logging.getLogger("dagster").removeHandler(handler)
+    context.log.removeHandler(handler)
     handler.close()
 
 def _archive_config(context, pipeline_config: PipelineConfig, config_path: str, asset_name: str):
@@ -52,8 +56,9 @@ def _archive_config(context, pipeline_config: PipelineConfig, config_path: str, 
     description="Create output directory structure with subdirectories for each pipeline asset.",
 )
 def pipeline_structure(context: dg.AssetExecutionContext, pipeline_config: PipelineConfig):
+    base = _base_output_dir(pipeline_config)
     for name in ASSET_DIRS:
-        d = os.path.join(pipeline_config.base_output_dir, name)
+        d = os.path.join(base, name)
         makedirs(d, exist_ok=True)
         context.log.info(f"Created {d}")
 
@@ -64,13 +69,13 @@ def pipeline_structure(context: dg.AssetExecutionContext, pipeline_config: Pipel
 def cleaned_dataset(context: dg.AssetExecutionContext, pipeline_config: PipelineConfig):
     from TunaSimNetwork.datasetBuilder import specCleaner
 
-    log_handler = _setup_file_logging(pipeline_config, "cleaned_dataset")
+    log_handler = _setup_file_logging(pipeline_config, "cleaned_dataset", context)
     try:
         cfg = load_config(pipeline_config.cleaning_config_path)
         _archive_config(context, pipeline_config, pipeline_config.cleaning_config_path, "cleaned_dataset")
 
-        raw = pd.read_pickle(pipeline_config.raw_input_path)
-        context.log.info(f"Loaded {len(raw)} spectra from {pipeline_config.raw_input_path}")
+        raw = pd.read_pickle(cfg.raw_input_path)
+        context.log.info(f"Loaded {len(raw)} spectra from {cfg.raw_input_path}")
 
         cleaner = specCleaner(
             noise_threshold=cfg.noise_threshold,
@@ -89,7 +94,7 @@ def cleaned_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeline
         context.log.info(f"Saved cleaned dataset to {output_path}")
 
     finally:
-        _teardown_file_logging(log_handler)
+        _teardown_file_logging(log_handler, context)
 
 @dg.asset(
     deps=[cleaned_dataset],
@@ -98,7 +103,7 @@ def cleaned_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeline
 def retrieved_dataset(context: dg.AssetExecutionContext, pipeline_config: PipelineConfig):
     from TunaSimNetwork.annotationTools import molRetriever
 
-    log_handler = _setup_file_logging(pipeline_config, "retrieved_dataset")
+    log_handler = _setup_file_logging(pipeline_config, "retrieved_dataset", context)
     try:
         cleaned_path = os.path.join(_asset_dir(pipeline_config, "cleaned_dataset"), "cleaned.pkl")
         df = pd.read_pickle(cleaned_path)
@@ -118,7 +123,7 @@ def retrieved_dataset(context: dg.AssetExecutionContext, pipeline_config: Pipeli
         context.log.info(f"Saved retrieved dataset to {output_path}")
 
     finally:
-        _teardown_file_logging(log_handler)
+        _teardown_file_logging(log_handler, context)
 
 @dg.asset(
     deps=[retrieved_dataset],
@@ -128,7 +133,7 @@ def mces_database(context: dg.AssetExecutionContext, pipeline_config: PipelineCo
     from TunaSimNetwork.annotationTools import simDB
     from TunaSimNetwork.datasetBuilder import foldCreation
 
-    log_handler = _setup_file_logging(pipeline_config, "mces_database")
+    log_handler = _setup_file_logging(pipeline_config, "mces_database", context)
     try:
         cfg = load_config(pipeline_config.fold_inputs_config_path)
         _archive_config(context, pipeline_config, pipeline_config.fold_inputs_config_path, "mces_database")
@@ -161,7 +166,7 @@ def mces_database(context: dg.AssetExecutionContext, pipeline_config: PipelineCo
         context.log.info(f"MCES database saved and indexed at {db_path}")
 
     finally:
-        _teardown_file_logging(log_handler)
+        _teardown_file_logging(log_handler, context)
 
 @dg.asset(
     deps=[mces_database],
@@ -173,7 +178,7 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
     from TunaSimNetwork.annotationTools import simDB
     from TunaSimNetwork.datasetBuilder import foldCreation
 
-    log_handler = _setup_file_logging(pipeline_config, "fold_assignments")
+    log_handler = _setup_file_logging(pipeline_config, "fold_assignments", context)
     try:
 
         cfg = load_config(pipeline_config.fold_inputs_config_path)
@@ -217,7 +222,7 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
         context.log.info(f"Fold assignments saved to {output_path}")
 
     finally:
-        _teardown_file_logging(log_handler)
+        _teardown_file_logging(log_handler, context)
 
 @dg.asset(
     deps=[fold_assignments],
@@ -226,7 +231,7 @@ def fold_assignments(context: dg.AssetExecutionContext, pipeline_config: Pipelin
 def training_datasets(context: dg.AssetExecutionContext, pipeline_config: PipelineConfig):
     from TunaSimNetwork.datasetBuilder import trainSetBuilder
 
-    log_handler = _setup_file_logging(pipeline_config, "training_datasets")
+    log_handler = _setup_file_logging(pipeline_config, "training_datasets", context)
     try:
         cfg = load_config(pipeline_config.fold_datasets_config_path)
         output_dir = _asset_dir(pipeline_config, "training_datasets")
@@ -254,4 +259,4 @@ def training_datasets(context: dg.AssetExecutionContext, pipeline_config: Pipeli
         context.log.info(f"Training datasets created in {output_dir}")
 
     finally:
-        _teardown_file_logging(log_handler)
+        _teardown_file_logging(log_handler, context)

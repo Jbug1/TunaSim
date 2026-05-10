@@ -1,7 +1,7 @@
 import pandas as pd
 from logging import getLogger
 import time
-from os import makedirs
+from os import makedirs, listdir
 
 class IdentityMatchNetwork:
     """ 
@@ -98,6 +98,30 @@ class IdentityMatchNetwork:
             adjustment_val.to_csv(f'{self.intermediate_outputs_path}/adjustment_val.csv', index = False)
 
         self.log.info(f'network training complete in {round((time.time() - overall_start) / 60, 4)} minutes')
+
+    def chunk_predict(self, 
+                      input_directory: str,
+                      output_directory: str,
+                      write_intermediates: bool = False):
+        
+        datasets_to_predict = [i for i in listdir(input_directory) if i[:-3:] == 'pkl']
+
+        makedirs(f'{output_directory}/predictions')
+
+        if write_intermediates:
+            makedirs(f'{output_directory}/intermediates')
+
+        for dataset in datasets_to_predict:
+
+            if write_intermediates:
+
+                makedirs(f'{output_directory}/intermdiates{dataset[:-4]}')
+                self.intermediate_outputs_path = f'{output_directory}/intermdiates{dataset[:-4]}'
+
+            predictions = self.predict(dataset = pd.read_pickle(f'{input_directory}/{dataset}'),
+                                       write_intermediates = write_intermediates)
+            
+            predictions.to_csv(f'{output_directory}/predictions/{dataset[:-4]}.csv')
 
     def predict(self, dataset, write_intermediates = False):
         """ 

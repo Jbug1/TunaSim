@@ -1,8 +1,8 @@
 # config for training_datasets asset
 
-dataset_max_sizes = {'train': 1.2e7,
-                     'val1': 1.2e7,
-                     'val2': 1.2e7,
+dataset_max_sizes = {'train': 1e9,
+                     'val1': 1e9,
+                     'val2': 1e9,
                      'test': 1e9}
 
 identity_column: str = 'inchikey_base'
