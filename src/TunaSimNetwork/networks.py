@@ -46,8 +46,6 @@ class IdentityMatchNetwork:
         self.log.info('beginning tunaSim training')
         self.tunaSim_layer.fit(pd.read_pickle(self.train_path))
 
-        print(boop)
-
         #create tunasim preds
         self.log.info('creating train tunasim predictions')
         train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path), 

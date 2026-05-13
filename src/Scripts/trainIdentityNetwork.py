@@ -34,15 +34,11 @@ def main(config_path):
     ensemble_layer = layers.ensembleLayer(candidates = config.ensemble_candidates,
                                           selection_method = config.selection_method,
                                           data_column_str = 'tuna')
-
-    ensemble_layer = layers.ensemble_shell()
     
     query_adjustment_layer = layers.groupAdjustmentLayer(candidates = config.query_adjustment_candidates,
                                                          selection_method = config.selection_method,
                                                          groupby_column = ['queryID'],
                                                          data_column_str = 'top_from_next')
-    
-    query_adjustment_layer = None
 
     #create network
     network = IdentityMatchNetwork(train_path = config.train_path,
