@@ -78,7 +78,9 @@ class IdentityMatchNetwork:
         if self.query_adjustment_layer is not None:
 
             self.log.info('creating val_2 tunasim predictions')
-            val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path))
+            val_2_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.val_2_path),
+                                                             downsample_proportion = self.val_match_proportion)
+            
             val_2_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_2.csv', index = False)
 
             self.log.info('creating val_2 consolidated predictions')
