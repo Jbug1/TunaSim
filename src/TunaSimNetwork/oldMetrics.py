@@ -5,17 +5,20 @@ import numpy as np
 from numba import njit
 from joblib import Parallel, delayed
 from sklearn.metrics import roc_auc_score
+import os
 
 class oldMetricEvaluator:
 
     def __init__(self,
                  groupby_columns,
-                 intermediates_path,
-                 performance_path):
+                 input_directory,
+                 output_directory):
         
         self.groupby_columns = groupby_columns
-        self.intermediates_path = intermediates_path
-        self.performance_path = performance_path
+        self.input_directory = input_directory
+        self.output_directory = output_directory
+
+        os.makedirs(output_directory)
 
         self.metrics = [oldMetricEvaluator.entropy_similarity, 
                     oldMetricEvaluator.dot_product_similarity,
@@ -119,38 +122,46 @@ class oldMetricEvaluator:
         results.to_csv(f'{self.intermediates_path}/old_metrics_weighted.csv')
         performance.to_csv(f'{self.performance_path}/old_metrics_weighted.csv')
 
-    def get_evals(self, dataset, reweighted = False):
+    def get_preds(self, reweighted = False):
 
-        queries = dataset['query'].to_numpy()
-        targets = dataset['target'].to_numpy()
 
-        if reweighted:
+        for file in os.listdir(self.input_directory):
 
-            queries = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in queries]
-            targets = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in targets]
+            try:
+                dataset = pd.read_pickle(f'{self.input_directory}/{file}')
+                queries = dataset['query'].to_numpy()
+                targets = dataset['target'].to_numpy()
 
-        #get weighted scores
-        results = list()
+                if reweighted:
 
-        if reweighted:
-            names = [i+'_reweighted' for i in self.names]
-        else:
-            names = self.names
+                    queries = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in queries]
+                    targets = [oldMetricEvaluator._weight_intensity_by_entropy(i, scipy.stats.entropy(i)) for i in targets]
 
-        for metric, name in zip(self.metrics, names):
+                #get weighted scores
+                results = list()
 
-            preds = list()
-            for query, target in zip(queries, targets):
+                if reweighted:
+                    names = [i+'_reweighted' for i in self.names]
+                else:
+                    names = self.names
 
-                preds.append(metric(query, target))
+                for metric, name in zip(self.metrics, names):
 
-            dataset[name] = preds
+                    preds = list()
+                    for query, target in zip(queries, targets):
+
+                        preds.append(metric(query, target))
+
+                    dataset[name] = preds
+                
+                #get performance
+                performance = dataset[self.groupby_columns + names + ['score']].groupby(self.groupby_columns).max()
+
+                if reweighted:
+                    performance.to_csv(f'{self.output_directory}/{file.split('.')[0]}_reweighted.csv')
+                else:
+                    performance.to_csv(f'{self.output_directory}/{file.split('.')[0]}.csv')
+
+            except Exception as e:
+                print(e)
         
-        #get performance
-        performance = dataset[self.groupby_columns + names + ['score']].groupby(self.groupby_columns).max()
-    
-        for name in names:
-
-            results.append((name, round(roc_auc_score(performance['score'], performance[name]),5)))
-        
-        return pd.DataFrame(results, columns = ['name', 'performance'])

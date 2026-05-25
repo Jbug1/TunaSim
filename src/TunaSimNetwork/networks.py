@@ -49,7 +49,7 @@ class IdentityMatchNetwork:
         #create tunasim preds
         self.log.info('creating train tunasim predictions')
         train_tunasim_preds = self.tunaSim_layer.predict(pd.read_pickle(self.train_path), 
-                                                         downsample_proportion = self.train_match_proportion)
+                                                         downsample_proportion = self.val_match_proportion)
         
         train_tunasim_preds.to_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv', index = False)
 
@@ -102,19 +102,19 @@ class IdentityMatchNetwork:
                       output_directory: str,
                       write_intermediates: bool = False):
         
-        datasets_to_predict = [i for i in listdir(input_directory) if i[:-3:] == 'pkl']
+        datasets_to_predict = [i for i in listdir(input_directory) if i[-3:] == 'pkl']
 
-        makedirs(f'{output_directory}/predictions')
+        makedirs(f'{output_directory}/predictions', exist_ok=True)
 
         if write_intermediates:
-            makedirs(f'{output_directory}/intermediates')
+            makedirs(f'{output_directory}/intermediates', exist_ok = True)
 
         for dataset in datasets_to_predict:
 
             if write_intermediates:
 
-                makedirs(f'{output_directory}/intermdiates{dataset[:-4]}')
-                self.intermediate_outputs_path = f'{output_directory}/intermdiates{dataset[:-4]}'
+                makedirs(f'{output_directory}/intermediates/{dataset[:-4]}', exist_ok = True)
+                self.intermediate_outputs_path = f'{output_directory}/intermdiates/{dataset[:-4]}'
 
             predictions = self.predict(dataset = pd.read_pickle(f'{input_directory}/{dataset}'),
                                        write_intermediates = write_intermediates)

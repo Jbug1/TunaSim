@@ -365,7 +365,7 @@ class tunaSimLayer:
         self.trainers = [trainer for trainer in self.trainers if trainer.trained == True]
 
     @staticmethod
-    def grouped_downsample(dataset, downsample_proportion, groupby_column):
+    def grouped_downsample(dataset, downsample_proportion, groupby_column, score_stratify_column = None):
         """ 
         retain a subset of the dataset as grouped by the groupby column of interest
         """
@@ -379,7 +379,15 @@ class tunaSimLayer:
         #for each group, reatin some % of indices
         for _, inds in dataset.groupby(groupby_column):
 
-            output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
+            if score_stratify_column is None:
+                output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
+            
+            else:
+                if inds[score_stratify_column].iloc[0] == True:
+                    output_inds.append(np.random.choice(inds['id'], size = max(1, int(inds.shape[0] * downsample_proportion)), replace = False))
+
+                else:
+                    output_inds.append(inds['id'])
             
         dataset.drop(columns = ['id'], inplace = True)
         dataset = dataset.iloc[np.concatenate(output_inds)]
