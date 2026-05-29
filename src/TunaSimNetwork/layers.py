@@ -35,7 +35,7 @@ class ensembleLayer:
         return data
     
 
-    def fit(self, train, val):
+    def fit(self, train, val = None):
 
         """ 
         fit the first aggregation layer tunasims to a score by tunasim groupby column
@@ -68,7 +68,12 @@ class ensembleLayer:
 
         if self.selection_method == 'top':
 
-            self.final_model = self.candidates[np.argmax(self.val_performance)]
+            if val is None:
+                self.final_model = self.candidates[np.argmax(self.train_performance)]
+
+            else:
+
+                self.final_model = self.candidates[np.argmax(self.val_performance)]
 
         else:
 
@@ -210,7 +215,7 @@ class groupAdjustmentLayer:
 
         return top_from_next, top_from_next_pct, top_from_next_dif
 
-    def fit(self, train, val):
+    def fit(self, train, val = None):
         """ 
         1) get multi hit data for train and val
         2) select best model for multi hit
@@ -219,7 +224,9 @@ class groupAdjustmentLayer:
         #transform input to be compatible with this layer
         #don't need single hits for training
         train = self.process_input_data(train)
-        val = self.process_input_data(val)
+
+        if val is not None:
+            val = self.process_input_data(val)
 
         return self.model_layer.fit(train, val)
 

@@ -61,8 +61,7 @@ class IdentityMatchNetwork:
 
         #select a tunasim aggregator from among candidates
         self.log.info('beginning ensemble layer training')
-        self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_train.csv'), 
-                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
+        self.ensemble_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_top_val_1.csv'))
         
         #create train aggregated preds
         self.log.info('creating train aggregated predictions')
@@ -90,9 +89,7 @@ class IdentityMatchNetwork:
             #fit group adjustment layer
             #train dataset now includes the first validation dataset
             self.log.info('beginning adjustment training')
-            adjustment_train, adjustment_val = self.query_adjustment_layer.fit(train = pd.concat([pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_train.csv'),
-                                                                                pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_1.csv')]),
-                                                                                val = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
+            adjustment_train, adjustment_val = self.query_adjustment_layer.fit(train = pd.read_csv(f'{self.intermediate_outputs_path}/tunasims_aggregated_top_val_2.csv'))
 
             adjustment_train.to_csv(f'{self.intermediate_outputs_path}/adjustment_train.csv', index = False)
             adjustment_val.to_csv(f'{self.intermediate_outputs_path}/adjustment_val.csv', index = False)
@@ -116,7 +113,7 @@ class IdentityMatchNetwork:
             if write_intermediates:
 
                 makedirs(f'{output_directory}/intermediates/{dataset[:-4]}', exist_ok = True)
-                self.intermediate_outputs_path = f'{output_directory}/intermdiates/{dataset[:-4]}'
+                self.intermediate_outputs_path = f'{output_directory}/intermediates/{dataset[:-4]}'
 
             predictions = self.predict(dataset = pd.read_pickle(f'{input_directory}/{dataset}'),
                                        write_intermediates = write_intermediates)
